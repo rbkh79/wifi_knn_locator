@@ -139,7 +139,7 @@ class _HomePageState extends State<HomePage> {
       // Wait a short moment for scan results to populate
       await Future.delayed(const Duration(seconds: 1));
 
-      List<WiFiNetwork>? results;
+      List<dynamic>? results;
       try {
         results = await WiFiScan.instance.getScannedResults();
       } catch (e) {
@@ -154,11 +154,14 @@ class _HomePageState extends State<HomePage> {
       }
 
       final accessPoints = results
-          .map((network) => WiFiAccessPoint(
-                bssid: network.bssid ?? '',
-                rssi: network.level ?? -100,
-              ))
+          .map((network) {
+            final dyn = network as dynamic;
+            final String bssid = (dyn.bssid ?? dyn.bss?.toString() ?? '') as String;
+            final int rssi = (dyn.level ?? dyn.rssi ?? -100) as int;
+            return WiFiAccessPoint(bssid: bssid, rssi: rssi);
+          })
           .where((ap) => ap.bssid.isNotEmpty)
+          .cast<WiFiAccessPoint>()
           .toList();
 
       accessPoints.sort((a, b) => b.rssi.compareTo(a.rssi));
