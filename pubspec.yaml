@@ -1,0 +1,27 @@
+name: wifi_knn_locator
+description: A simple Flutter app estimating location from Wi‑Fi BSSIDs using a simple KNN-like method.
+publish_to: 'none'
+version: 0.1.0+1
+environment:
+  sdk: ">=2.17.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  # wifi_info_plus and wifi_scan are Android-only in this sample and
+  # cause dependency resolution failures on some setups. They are removed
+  # here so the app can be fetched and run on Windows for a UI preview.
+  # Add them back when running on Android devices.
+  # wifi_info_plus and wifi_scan removed for this debug build (UI + KNN demo).
+  # Re-add them if you want real Wi‑Fi scanning on Android devices.
+  permission_handler: ^10.4.0
+  url_launcher: ^6.1.10
+  flutter_map: ^4.0.0
+  latlong2: ^0.8.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/wifi_db.csv
+    - assets/wifi_fingerprints.csv

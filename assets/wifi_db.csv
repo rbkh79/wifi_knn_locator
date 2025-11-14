@@ -1,0 +1,7 @@
+# Sample BSSID database (bssid,lat,lon)
+# Replace these sample entries with real measurements for accurate results.
+aa:bb:cc:dd:ee:01,37.4219983,-122.084
+aa:bb:cc:dd:ee:02,37.4221,-122.085
+aa:bb:cc:dd:ee:03,37.4225,-122.0835
+ff:ee:dd:cc:bb:01,40.6892494,-74.0445004
+11:22:33:44:55:66,48.8583701,2.2944813

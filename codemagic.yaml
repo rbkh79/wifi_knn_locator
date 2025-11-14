@@ -1,0 +1,33 @@
+workflows:
+  build-apk:
+    name: Build Flutter APK
+    instance_type: mac_mini_m1
+    max_build_duration: 30
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.m2
+    triggering:
+      events:
+        - push
+      branch:
+        include_patterns:
+          - main
+          - master
+          - develop
+    scripts:
+      - name: Get Flutter dependencies
+        script: flutter pub get
+      - name: Build APK
+        script: flutter build apk --debug --split-per-abi
+    artifacts:
+      - build/app/outputs/flutter-apk/**/*.apk
+      - build/app/outputs/**/*.apk
+    publishing:
+      google_play:
+        credentials: Iv1.a7ea...
+        track: internal

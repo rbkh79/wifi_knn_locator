@@ -1,0 +1,9 @@
+# Sample fingerprint dataset
+# Format per line:
+# lat,lon,bssid1:rssi,bssid2:rssi,bssid3:rssi,...
+# These are synthetic example fingerprints for UI/demo only.
+37.4220,-122.0841,aa:bb:cc:dd:ee:01:-40,aa:bb:cc:dd:ee:02:-60,aa:bb:cc:dd:ee:03:-80
+37.4222,-122.0850,aa:bb:cc:dd:ee:02:-42,aa:bb:cc:dd:ee:01:-65,aa:bb:cc:dd:ee:03:-78
+37.4226,-122.0836,aa:bb:cc:dd:ee:03:-38,aa:bb:cc:dd:ee:01:-70,aa:bb:cc:dd:ee:02:-85
+40.6892,-74.0445,ff:ee:dd:cc:bb:01:-45
+48.8584,2.2945,11:22:33:44:55:66:-50
