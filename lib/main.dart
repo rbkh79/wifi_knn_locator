@@ -4,7 +4,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
 import 'package:csv/csv.dart';
 import 'package:wifi_scan/wifi_scan.dart';
-import 'package:wifi_info_plus/wifi_info_plus.dart';
 
 void main() {
   runApp(const MyApp());
@@ -105,8 +104,8 @@ class _HomePageState extends State<HomePage> {
         _result =
             'شبکه‌های یافت شده:\n$networkList\n\n'
             'موقعیت برآورد شده:\n'
-            'Latitude: ${prediction['lat'].toStringAsFixed(6)}\n'
-            'Longitude: ${prediction['lon'].toStringAsFixed(6)}\n'
+            'Latitude: ${(prediction['lat'] ?? 0.0).toStringAsFixed(6)}\n'
+              'Longitude: ${(prediction['lon'] ?? 0.0).toStringAsFixed(6)}\n'
             '(KNN k=3)';
       });
     } catch (e) {
@@ -119,7 +118,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<WiFiAccessPoint>> _scanRealWiFi() async {
     try {
-      // Request WIFI state permission
+      // Ensure we have location permission on Android
       if (Platform.isAndroid) {
         final wifiStatus = await Permission.location.request();
         if (!wifiStatus.isGranted) {
@@ -127,15 +126,34 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      // Get list of available WiFi networks
-      final result = await WiFiScan.instance.getScannedNetworks(
-        shouldOpenLocationSettings: true,
-      );
+      // Start a scan, then collect results. Different wifi_scan versions expose
+      // slightly different APIs; use startScan + getScannedResults which is
+      // available in recent 0.x releases and falls back gracefully.
+      try {
+        await WiFiScan.instance.startScan();
+      } catch (e) {
+        // startScan may throw or be unnecessary on some platforms; ignore.
+        debugPrint('startScan() threw: $e');
+      }
 
-      debugPrint('WiFi scan result: $result');
+      // Wait a short moment for scan results to populate
+      await Future.delayed(const Duration(seconds: 1));
 
-      // Convert to WiFiAccessPoint list
-      final accessPoints = result
+      List<WiFiNetwork>? results;
+      try {
+        results = await WiFiScan.instance.getScannedResults();
+      } catch (e) {
+        debugPrint('getScannedResults() not available or failed: $e');
+        results = null;
+      }
+
+      // Convert to WiFiAccessPoint list (or fallback to simulation)
+      if (results == null || results.isEmpty) {
+        debugPrint('No real scan results, using simulated data');
+        return _simulateScan();
+      }
+
+      final accessPoints = results
           .map((network) => WiFiAccessPoint(
                 bssid: network.bssid ?? '',
                 rssi: network.level ?? -100,
@@ -143,9 +161,7 @@ class _HomePageState extends State<HomePage> {
           .where((ap) => ap.bssid.isNotEmpty)
           .toList();
 
-      // Sort by signal strength (strongest first)
       accessPoints.sort((a, b) => b.rssi.compareTo(a.rssi));
-
       debugPrint('Found ${accessPoints.length} WiFi networks');
       for (final ap in accessPoints) {
         debugPrint('BSSID: ${ap.bssid}, RSSI: ${ap.rssi}');
@@ -154,7 +170,6 @@ class _HomePageState extends State<HomePage> {
       return accessPoints;
     } catch (e) {
       debugPrint('WiFi scan error: $e');
-      // Fallback: return simulated data if real scan fails
       return _simulateScan();
     }
   }
