@@ -4,6 +4,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
 import 'package:csv/csv.dart';
 import 'package:wifi_scan/wifi_scan.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,9 +21,14 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.light,
+        ),
       ),
       home: const HomePage(),
       localizationsDelegates: const [],
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -34,9 +41,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String _result = 'فشار دکمه اسکن را بزن';
   bool _loading = false;
   List<Map<String, dynamic>> _fingerprints = [];
+  List<WiFiAccessPoint> _scannedNetworks = [];
+  Map<String, double>? _prediction;
+  final MapController _mapController = MapController();
 
   @override
   void initState() {
@@ -67,21 +76,35 @@ class _HomePageState extends State<HomePage> {
       debugPrint('Loaded ${_fingerprints.length} fingerprints');
     } catch (e) {
       debugPrint('Error loading fingerprints: $e');
-      setState(() => _result = 'خطا در بارگذاری دادگان: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در بارگذاری دادگان: $e')),
+        );
+      }
     }
   }
 
   Future<void> _scan() async {
     setState(() {
       _loading = true;
-      _result = 'در حال اسکن...';
+      _scannedNetworks = [];
+      _prediction = null;
     });
+
     try {
       // Request permissions
       if (Platform.isAndroid) {
         final locationStatus = await Permission.location.request();
         if (!locationStatus.isGranted) {
-          setState(() => _result = 'دسترسی مکان رد شد');
+          setState(() => _loading = false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('دسترسی مکان رد شد. لطفاً مجوز را در تنظیمات فعال کنید.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
           return;
         }
       }
@@ -90,29 +113,57 @@ class _HomePageState extends State<HomePage> {
       final observed = await _scanRealWiFi();
 
       if (observed.isEmpty) {
-        setState(() => _result = 'هیچ شبکهٔ وای‌فایی یافت نشد. دستگاه را دوباره سعی کن.');
+        setState(() {
+          _loading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('هیچ شبکهٔ وای‌فایی یافت نشد. لطفاً WiFi را روشن کنید.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
         return;
       }
 
       // Perform KNN prediction
       final prediction = _knnPredictFromFingerprint(observed, k: 3);
-      
-      // Display found networks
-      final networkList = observed.map((ap) => '${ap.bssid}: ${ap.rssi} dBm').join('\n');
-      
+
       setState(() {
-        _result =
-            'شبکه‌های یافت شده:\n$networkList\n\n'
-            'موقعیت برآورد شده:\n'
-            'Latitude: ${(prediction['lat'] ?? 0.0).toStringAsFixed(6)}\n'
-              'Longitude: ${(prediction['lon'] ?? 0.0).toStringAsFixed(6)}\n'
-            '(KNN k=3)';
+        _scannedNetworks = observed;
+        _prediction = prediction;
+        _loading = false;
       });
+
+      // Update map to show prediction
+      if (prediction['lat'] != 0.0 && prediction['lon'] != 0.0) {
+        _mapController.move(
+          LatLng(prediction['lat']!, prediction['lon']!),
+          16.0,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('اسکن با موفقیت انجام شد!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      setState(() => _result = 'خطا: $e');
-      debugPrint('Scan error: $e');
-    } finally {
       setState(() => _loading = false);
+      debugPrint('Scan error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در اسکن: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -126,18 +177,15 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      // Start a scan, then collect results. Different wifi_scan versions expose
-      // slightly different APIs; use startScan + getScannedResults which is
-      // available in recent 0.x releases and falls back gracefully.
+      // Start a scan
       try {
         await WiFiScan.instance.startScan();
       } catch (e) {
-        // startScan may throw or be unnecessary on some platforms; ignore.
         debugPrint('startScan() threw: $e');
       }
 
-      // Wait a short moment for scan results to populate
-      await Future.delayed(const Duration(seconds: 1));
+      // Wait for scan results
+      await Future.delayed(const Duration(seconds: 2));
 
       List<dynamic>? results;
       try {
@@ -147,7 +195,7 @@ class _HomePageState extends State<HomePage> {
         results = null;
       }
 
-      // Convert to WiFiAccessPoint list (or fallback to simulation)
+      // Convert to WiFiAccessPoint list
       if (results == null || results.isEmpty) {
         debugPrint('No real scan results, using simulated data');
         return _simulateScan();
@@ -247,16 +295,16 @@ class _HomePageState extends State<HomePage> {
     };
   }
 
-  Future<void> _openInMaps(double lat, double lon) async {
-    final url = 'geo:$lat,$lon?q=$lat,$lon';
+  Future<void> _openInExternalMaps(double lat, double lon) async {
+    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lon');
     try {
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url));
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا: $e')),
+          SnackBar(content: Text('خطا در باز کردن نقشه: $e')),
         );
       }
     }
@@ -264,74 +312,491 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final defaultLocation = LatLng(35.6762, 51.4158); // تهران
+    final predictionLocation = _prediction != null &&
+            _prediction!['lat'] != 0.0 &&
+            _prediction!['lon'] != 0.0
+        ? LatLng(_prediction!['lat']!, _prediction!['lon']!)
+        : defaultLocation;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('WiFi KNN Locator'),
-        centerTitle: true,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue.shade50,
+              Colors.blue.shade100,
+              Colors.white,
+            ],
+          ),
+        ),
+        child: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.location_on, size: 80, color: Colors.blue),
-              const SizedBox(height: 20),
-              Text(
-                _result,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 40),
-              ElevatedButton(
-                onPressed: _loading ? null : _scan,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 40, vertical: 16),
+              // App Bar
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: _loading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi_find, color: Colors.blue.shade700, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'WiFi KNN Locator',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                          Text(
+                            'موقعیت‌یابی با الگوریتم KNN',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _loading ? null : _scan,
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.search),
+                      label: Text(_loading ? 'در حال اسکن...' : 'اسکن WiFi'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                      )
-                    : const Text('شروع اسکن'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () {
-                  final parts = _result.split('\n');
-                  if (parts.length >= 3) {
-                    final latStr = parts[1]
-                        .replaceAll('Latitude: ', '')
-                        .trim();
-                    final lonStr = parts[2]
-                        .replaceAll('Longitude: ', '')
-                        .replaceAll(RegExp(r'\(.*'), '')
-                        .trim();
 
-                    final lat = double.tryParse(latStr) ?? 0.0;
-                    final lon = double.tryParse(lonStr) ?? 0.0;
+              // Main Content
+              Expanded(
+                child: Row(
+                  children: [
+                    // Left Panel - Info
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        margin: const EdgeInsets.all(8),
+                        child: Column(
+                          children: [
+                            // Prediction Card
+                            Card(
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.blue.shade600,
+                                      Colors.blue.shade800,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.location_on,
+                                          color: Colors.white,
+                                          size: 28,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Text(
+                                          'موقعیت برآورد شده',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    if (_prediction != null &&
+                                        _prediction!['lat'] != 0.0 &&
+                                        _prediction!['lon'] != 0.0) ...[
+                                      _buildInfoRow(
+                                        'عرض جغرافیایی',
+                                        _prediction!['lat']!.toStringAsFixed(6),
+                                        Icons.explore,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _buildInfoRow(
+                                        'طول جغرافیایی',
+                                        _prediction!['lon']!.toStringAsFixed(6),
+                                        Icons.explore,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                          onPressed: () => _openInExternalMaps(
+                                            _prediction!['lat']!,
+                                            _prediction!['lon']!,
+                                          ),
+                                          icon: const Icon(Icons.open_in_new),
+                                          label: const Text('باز کردن در Google Maps'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.white,
+                                            foregroundColor: Colors.blue.shade800,
+                                          ),
+                                        ),
+                                      ),
+                                    ] else
+                                      const Text(
+                                        'برای مشاهده موقعیت، ابتدا اسکن را انجام دهید',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
 
-                    if (lat != 0.0 && lon != 0.0) {
-                      _openInMaps(lat, lon);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('ابتدا اسکن را اجرا کن')),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.map),
-                label: const Text('نقشه'),
+                            const SizedBox(height: 8),
+
+                            // Networks Card
+                            Expanded(
+                              child: Card(
+                                elevation: 4,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.wifi,
+                                            color: Colors.blue.shade700,
+                                            size: 24,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'شبکه‌های یافت شده',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue.shade900,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          if (_scannedNetworks.isNotEmpty)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade100,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                '${_scannedNetworks.length}',
+                                                style: TextStyle(
+                                                  color: Colors.green.shade800,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Expanded(
+                                        child: _scannedNetworks.isEmpty
+                                            ? Center(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.wifi_off,
+                                                      size: 64,
+                                                      color: Colors.grey.shade300,
+                                                    ),
+                                                    const SizedBox(height: 16),
+                                                    Text(
+                                                      'هنوز اسکنی انجام نشده',
+                                                      style: TextStyle(
+                                                        color: Colors.grey.shade600,
+                                                        fontSize: 14,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              )
+                                            : ListView.builder(
+                                                itemCount: _scannedNetworks.length,
+                                                itemBuilder: (context, index) {
+                                                  final network =
+                                                      _scannedNetworks[index];
+                                                  return _buildNetworkItem(network);
+                                                },
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Right Panel - Map
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: FlutterMap(
+                            mapController: _mapController,
+                            options: MapOptions(
+                              initialCenter: predictionLocation,
+                              initialZoom: 15.0,
+                              minZoom: 5.0,
+                              maxZoom: 18.0,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.example.wifi_knn_locator',
+                              ),
+                              if (_prediction != null &&
+                                  _prediction!['lat'] != 0.0 &&
+                                  _prediction!['lon'] != 0.0)
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: predictionLocation,
+                                      width: 80,
+                                      height: 80,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade600,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 3,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.3),
+                                              blurRadius: 8,
+                                              spreadRadius: 2,
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.location_on,
+                                          color: Colors.white,
+                                          size: 40,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildInfoRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white70, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNetworkItem(WiFiAccessPoint network) {
+    final signalStrength = _getSignalStrength(network.rssi);
+    final signalColor = _getSignalColor(network.rssi);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: signalColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.wifi,
+              color: signalColor,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  network.bssid,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.signal_cellular_alt,
+                      size: 16,
+                      color: signalColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${network.rssi} dBm',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: signalColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        signalStrength,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: signalColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getSignalStrength(int rssi) {
+    if (rssi >= -50) return 'عالی';
+    if (rssi >= -60) return 'خوب';
+    if (rssi >= -70) return 'متوسط';
+    if (rssi >= -80) return 'ضعیف';
+    return 'خیلی ضعیف';
+  }
+
+  Color _getSignalColor(int rssi) {
+    if (rssi >= -50) return Colors.green;
+    if (rssi >= -60) return Colors.lightGreen;
+    if (rssi >= -70) return Colors.orange;
+    if (rssi >= -80) return Colors.deepOrange;
+    return Colors.red;
   }
 }
 
