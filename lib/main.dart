@@ -830,7 +830,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const Divider(),
                 ListTile(
-                  leading: const Icon(Icons.database),
+                  leading: const Icon(Icons.storage),
                   title: const Text('تعداد اثرانگشت‌ها'),
                   trailing: Text(
                     '$_fingerprintCount',
