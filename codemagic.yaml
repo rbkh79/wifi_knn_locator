@@ -1,5 +1,5 @@
 workflows:
-  android_debug_only:
+  android_debug_apk:
     name: Debug APK (Fast)
     environment:
       flutter: stable
@@ -12,3 +12,31 @@ workflows:
           flutter build apk --debug
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
+
+  android_release_apk:
+    name: Release APK
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get dependencies
+        script: |
+          flutter pub get
+      - name: Build release APK
+        script: |
+          flutter build apk --release
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+
+  android_release_aab:
+    name: Release AAB (App Bundle)
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get dependencies
+        script: |
+          flutter pub get
+      - name: Build release AAB
+        script: |
+          flutter build appbundle --release
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab

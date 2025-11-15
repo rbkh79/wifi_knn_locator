@@ -16,6 +16,10 @@ dependencies:
   wifi_scan: ^0.4.1+2
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  crypto: ^3.0.3
+  device_info_plus: ^9.1.0
 
 dev_dependencies:
   flutter_test:
