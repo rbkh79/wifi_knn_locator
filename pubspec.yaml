@@ -20,6 +20,8 @@ dependencies:
   path: ^1.8.3
   crypto: ^3.0.3
   device_info_plus: ^9.1.0
+  geolocator: ^10.1.0
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

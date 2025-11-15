@@ -40,5 +40,9 @@ class AppConfig {
   static const double minConfidence = 0.0;
   static const double maxConfidence = 1.0;
   static const double confidenceThreshold = 0.3; // حداقل اعتماد برای نمایش نتیجه
+
+  // تنظیمات موقعیت جغرافیایی
+  static const String useGeolocationKey = 'use_geolocation';
+  static const bool defaultUseGeolocation = true; // به صورت پیش‌فرض فعال است
 }
 
