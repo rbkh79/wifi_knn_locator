@@ -112,7 +112,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
       return;
-    }
+  }
 
     setState(() {
       _loadingLocation = true;
@@ -127,27 +127,27 @@ class _HomePageState extends State<HomePage> {
       });
 
       if (position == null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
             content: Text('نمی‌توان موقعیت را دریافت کرد. لطفاً مجوزها را بررسی کنید.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
     } catch (e) {
-      setState(() {
+        setState(() {
         _loadingLocation = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('خطا در دریافت موقعیت: $e'),
             backgroundColor: Colors.red,
-          ),
-        );
-      }
+            ),
+          );
+        }
     }
-  }
+      }
 
   Future<void> _performScan() async {
     setState(() {
@@ -159,7 +159,7 @@ class _HomePageState extends State<HomePage> {
     try {
       // اجرای اسکن
       final scanResult = await WifiScanner.performScan();
-      
+
       setState(() {
         _currentScanResult = scanResult;
         _expandedSignalResults = true; // باز کردن بخش نتایج
@@ -262,7 +262,7 @@ class _HomePageState extends State<HomePage> {
             backgroundColor: Colors.red,
           ),
         );
-      }
+    }
     }
   }
 
@@ -271,7 +271,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _useGeolocation = value;
     });
-  }
+      }
 
   @override
   void dispose() {
@@ -376,13 +376,13 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
+          child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            children: [
                 if (!_useGeolocation)
-                  Container(
+              Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
+                decoration: BoxDecoration(
                       color: Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.orange.shade200),
@@ -396,9 +396,9 @@ class _HomePageState extends State<HomePage> {
                             'استفاده از موقعیت جغرافیایی غیرفعال است. برای فعال کردن به تنظیمات بروید.',
                             style: TextStyle(color: Colors.orange.shade900),
                           ),
-                        ),
-                      ],
                     ),
+                  ],
+                ),
                   ),
                 if (_useGeolocation) ...[
                   if (_currentPosition != null) ...[
@@ -473,33 +473,33 @@ class _HomePageState extends State<HomePage> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.blue.shade200),
                     ),
-                    child: Row(
-                      children: [
+                child: Row(
+                  children: [
                         Icon(Icons.phone_android, color: Colors.blue.shade700),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                               const Text(
                                 'شناسه دستگاه (هش‌شده):',
-                                style: TextStyle(
+                            style: TextStyle(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                               const SizedBox(height: 4),
-                              Text(
+                          Text(
                                 PrivacyUtils.shortenMacAddress(_deviceId!, maxLength: 16),
-                                style: TextStyle(
+                            style: TextStyle(
                                   fontSize: 11,
                                   fontFamily: 'monospace',
                                   color: Colors.blue.shade900,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
+                      ),
+                    ),
                       ],
                     ),
                   ),
@@ -510,20 +510,20 @@ class _HomePageState extends State<HomePage> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _loading ? null : _performScan,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Icon(Icons.search),
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.search),
                     label: Text(_loading ? 'در حال اسکن...' : 'شروع اسکن Wi-Fi'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade700,
-                      foregroundColor: Colors.white,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),
@@ -575,9 +575,9 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
+                  ],
+                ),
+              ),
         ],
       ),
     );
@@ -605,40 +605,40 @@ class _HomePageState extends State<HomePage> {
             _expandedSignalResults = expanded;
           });
         },
-        children: [
+                  children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
+                        child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                          children: [
                 // نمایش موقعیت تخمینی
                 if (_locationEstimate != null && _locationEstimate!.isReliable) ...[
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
                         colors: [Colors.green.shade400, Colors.green.shade600],
-                      ),
+                                  ),
                       borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
                             const Icon(Icons.location_on, color: Colors.white),
-                            const SizedBox(width: 8),
-                            const Text(
+                                        const SizedBox(width: 8),
+                                        const Text(
                               'موقعیت تخمینی',
-                              style: TextStyle(
-                                color: Colors.white,
+                                          style: TextStyle(
+                                            color: Colors.white,
                                 fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
                         _buildInfoRowWhite('عرض جغرافیایی', _locationEstimate!.latitude.toStringAsFixed(6)),
                         const SizedBox(height: 8),
                         _buildInfoRowWhite('طول جغرافیایی', _locationEstimate!.longitude.toStringAsFixed(6)),
@@ -646,14 +646,14 @@ class _HomePageState extends State<HomePage> {
                         _buildInfoRowWhite(
                           'ضریب اطمینان',
                           '${(_locationEstimate!.confidence * 100).toStringAsFixed(1)}%',
-                        ),
+                                      ),
                         if (_locationEstimate!.zoneLabel != null) ...[
-                          const SizedBox(height: 8),
+                                      const SizedBox(height: 8),
                           _buildInfoRowWhite('ناحیه', _locationEstimate!.zoneLabel!),
                         ],
                       ],
                     ),
-                  ),
+                                      ),
                   const SizedBox(height: 16),
                 ] else if (_locationEstimate != null && !_locationEstimate!.isReliable) ...[
                   Container(
@@ -662,7 +662,7 @@ class _HomePageState extends State<HomePage> {
                       color: Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.orange.shade200),
-                    ),
+                                          ),
                     child: Row(
                       children: [
                         Icon(Icons.warning, color: Colors.orange.shade700),
@@ -671,8 +671,8 @@ class _HomePageState extends State<HomePage> {
                           child: Text(
                             'ضریب اطمینان پایین است. لطفاً اسکن را تکرار کنید.',
                             style: TextStyle(color: Colors.orange.shade900),
-                          ),
-                        ),
+                                          ),
+                                        ),
                       ],
                     ),
                   ),
@@ -680,7 +680,7 @@ class _HomePageState extends State<HomePage> {
                 ],
                 // لیست APها
                 if (_currentScanResult != null && _currentScanResult!.accessPoints.isNotEmpty) ...[
-                  const Text(
+                                      const Text(
                     'نقاط دسترسی Wi-Fi:',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
@@ -697,11 +697,11 @@ class _HomePageState extends State<HomePage> {
                           Text(
                             'هنوز اسکنی انجام نشده',
                             style: TextStyle(color: Colors.grey.shade600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
               ],
             ),
           ),
@@ -722,7 +722,7 @@ class _HomePageState extends State<HomePage> {
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade200),
-      ),
+                                ),
       child: Row(
         children: [
           Container(
@@ -735,13 +735,13 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                          Text(
                   maskedBssid,
                   style: const TextStyle(
-                    fontWeight: FontWeight.bold,
+                                              fontWeight: FontWeight.bold,
                     fontSize: 13,
                     fontFamily: 'monospace',
                   ),
@@ -751,7 +751,7 @@ class _HomePageState extends State<HomePage> {
                   Text(
                     'SSID: ${ap.ssid}',
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
+                                            ),
                 ],
                 const SizedBox(height: 8),
                 Row(
@@ -763,24 +763,24 @@ class _HomePageState extends State<HomePage> {
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
                     const SizedBox(width: 12),
-                    Container(
+                                            Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
+                                              decoration: BoxDecoration(
                         color: signalColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
+                                              ),
+                                              child: Text(
                         signalStrength,
-                        style: TextStyle(
+                                                style: TextStyle(
                           fontSize: 10,
                           color: signalColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
                     if (ap.frequency != null) ...[
                       const Spacer(),
-                      Text(
+                                                    Text(
                         '${ap.frequency} MHz',
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                       ),
@@ -788,10 +788,10 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
     );
   }
 
@@ -827,7 +827,7 @@ class _HomePageState extends State<HomePage> {
                     _useGeolocation ? Icons.location_on : Icons.location_off,
                     color: _useGeolocation ? Colors.green : Colors.grey,
                   ),
-                ),
+                                              ),
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.storage),
@@ -837,12 +837,12 @@ class _HomePageState extends State<HomePage> {
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
         ],
       ),
     );
@@ -868,9 +868,9 @@ class _HomePageState extends State<HomePage> {
                     fontWeight: FontWeight.bold,
                     color: Colors.blue.shade900,
                   ),
-                ),
-              ],
-            ),
+                            ),
+                          ],
+                        ),
             const SizedBox(height: 12),
             Text(
               'این اپلیکیشن از موقعیت دستگاه (GPS) و سیگنال‌های Wi-Fi اطراف برای تخمین موقعیت شما استفاده می‌کند. '
@@ -880,16 +880,16 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.blue.shade900,
                 height: 1.5,
               ),
-            ),
+                            ),
             const SizedBox(height: 8),
             if (_useGeolocation)
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
+                                        decoration: BoxDecoration(
                   color: Colors.green.shade50,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: Colors.green.shade200),
-                ),
+                                          ),
                 child: Row(
                   children: [
                     Icon(Icons.check_circle, color: Colors.green.shade700, size: 16),
@@ -900,11 +900,11 @@ class _HomePageState extends State<HomePage> {
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.green.shade900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
               )
             else
               Container(
@@ -913,7 +913,7 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: Colors.orange.shade200),
-                ),
+                          ),
                 child: Row(
                   children: [
                     Icon(Icons.info, color: Colors.orange.shade700, size: 16),
@@ -930,7 +930,7 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
-          ],
+            ],
         ),
       ),
     );
@@ -966,30 +966,30 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildInfoRowWhite(String label, String value) {
     return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                 label,
-                style: const TextStyle(
-                  fontSize: 12,
+                  style: const TextStyle(
+                        fontSize: 12,
                   color: Colors.white70,
-                ),
-              ),
+                      ),
+                    ),
               Text(
                 value,
                 style: const TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                   color: Colors.white,
+                      ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
     );
   }
 
