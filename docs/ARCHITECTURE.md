@@ -475,3 +475,4 @@ CREATE INDEX idx_ap_bssid ON access_points(bssid);
 - ماژول‌ها به صورت مستقل قابل تست هستند
 - Dependency Injection برای تست‌پذیری بهتر
 
+

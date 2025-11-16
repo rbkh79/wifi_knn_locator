@@ -117,3 +117,4 @@ flutter build appbundle --release
 فایل AAB در مسیر زیر قرار می‌گیرد:
 `build\app\outputs\bundle\release\app-release.aab`
 
+

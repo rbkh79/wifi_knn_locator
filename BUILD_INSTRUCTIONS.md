@@ -109,3 +109,4 @@ adb install -r build\app\outputs\flutter-apk\app-release.apk
 اگر مشکلی پیش آمد، لطفاً issue در GitHub ایجاد کنید.
 
 
+
