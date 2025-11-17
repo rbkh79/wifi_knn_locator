@@ -155,3 +155,4 @@ flutter build apk --release
 **نکته:** بعد از اضافه کردن Flutter به PATH، باید تمام پنجره‌های Command Prompt را ببندید و دوباره باز کنید تا تغییرات اعمال شود.
 
 
+
