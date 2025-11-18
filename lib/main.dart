@@ -234,6 +234,157 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// مدیریت کلیک روی نقشه برای اضافه کردن نقطه مرجع
+  Future<void> _handleMapTap(LatLng point) async {
+    // نمایش Dialog برای وارد کردن لیبل ناحیه
+    final zoneLabel = await showDialog<String>(
+      context: context,
+      builder: (context) => _buildAddReferencePointDialog(point),
+    );
+
+    if (zoneLabel == null) return; // کاربر لغو کرد
+
+    // نمایش Progress
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('در حال اسکن Wi-Fi و ذخیره نقطه مرجع...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      // انجام اسکن Wi-Fi
+      final scanResult = await WifiScanner.performScan();
+
+      if (scanResult.accessPoints.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('هیچ نقطه دسترسی Wi-Fi یافت نشد. لطفاً دوباره تلاش کنید.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // ذخیره اثرانگشت با مختصات نقطه کلیک شده
+      await _fingerprintService.saveFingerprint(
+        latitude: point.latitude,
+        longitude: point.longitude,
+        zoneLabel: zoneLabel.isEmpty ? null : zoneLabel,
+        scanResult: scanResult,
+      );
+
+      // به‌روزرسانی لیست نقاط مرجع
+      await _loadFingerprintEntries();
+      await _updateFingerprintCount();
+
+      // حرکت نقشه به نقطه جدید
+      _mapController.move(point, AppConfig.defaultMapZoom);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('نقطه مرجع با ${scanResult.accessPoints.length} AP ذخیره شد!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving reference point: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در ذخیره نقطه مرجع: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  /// Dialog برای وارد کردن لیبل ناحیه
+  Widget _buildAddReferencePointDialog(LatLng point) {
+    final zoneController = TextEditingController();
+    
+    return AlertDialog(
+      title: const Text('اضافه کردن نقطه مرجع'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'مختصات: ${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: zoneController,
+            decoration: const InputDecoration(
+              labelText: 'لیبل ناحیه (اختیاری)',
+              hintText: 'مثلاً: اتاق 101، راهرو، سالن',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.label),
+            ),
+            autofocus: true,
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'بعد از تأیید، اسکن Wi-Fi انجام می‌شود و داده‌ها ذخیره می‌شوند.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('لغو'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(zoneController.text),
+          child: const Text('ذخیره'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue.shade700,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _saveFingerprint() async {
     if (_currentScanResult == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -438,6 +589,33 @@ class _HomePageState extends State<HomePage> {
           setState(() => _expandedMap = expanded);
         },
         children: [
+          // راهنمای استفاده
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.touch_app, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'برای اضافه کردن نقطه مرجع، روی نقشه کلیک کنید. اسکن Wi-Fi به صورت خودکار انجام می‌شود.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           Container(
             height: 280,
             margin: const EdgeInsets.all(16),
@@ -446,13 +624,19 @@ class _HomePageState extends State<HomePage> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: FlutterMap(
+              child: Stack(
+                children: [
+                  FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
                   initialCenter: _getInitialMapCenter(),
                   initialZoom: AppConfig.defaultMapZoom,
                   minZoom: AppConfig.minMapZoom,
                   maxZoom: AppConfig.maxMapZoom,
+                  onTap: (tapPosition, point) {
+                    // کلیک روی نقشه برای اضافه کردن نقطه مرجع
+                    _handleMapTap(point);
+                  },
                 ),
                 children: [
                   TileLayer(
@@ -483,10 +667,55 @@ class _HomePageState extends State<HomePage> {
                     ),
                 ],
               ),
+                  // راهنمای رنگ‌ها
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildLegendItem(Icons.place, Colors.deepOrange, 'نقاط مرجع'),
+                          const SizedBox(height: 4),
+                          _buildLegendItem(Icons.my_location, Colors.blue, 'تخمین KNN'),
+                          if (_currentPosition != null && _useGeolocation)
+                            _buildLegendItem(Icons.person_pin_circle, Colors.green, 'GPS شما'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLegendItem(IconData icon, Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10),
+        ),
+      ],
     );
   }
 
