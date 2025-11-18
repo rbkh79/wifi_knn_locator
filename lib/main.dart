@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
 import 'data_model.dart';
 import 'wifi_scanner.dart';
@@ -56,12 +58,14 @@ class _HomePageState extends State<HomePage> {
   int _fingerprintCount = 0;
   bool _useGeolocation = true;
   bool _loadingLocation = false;
+  List<FingerprintEntry> _fingerprintEntries = [];
   
   // Expansion states
   bool _expandedDeviceLocation = false;
   bool _expandedWifiScan = false;
   bool _expandedSignalResults = false;
   bool _expandedSettings = false;
+  bool _expandedMap = true;
   
   // Services
   late final LocalDatabase _database;
@@ -72,6 +76,7 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _latController = TextEditingController();
   final TextEditingController _lonController = TextEditingController();
   final TextEditingController _zoneController = TextEditingController();
+  final MapController _mapController = MapController();
 
   @override
   void initState() {
@@ -92,6 +97,7 @@ class _HomePageState extends State<HomePage> {
     
     // بارگذاری تعداد اثرانگشت‌ها
     _updateFingerprintCount();
+    await _loadFingerprintEntries();
     
     setState(() {});
   }
@@ -99,6 +105,22 @@ class _HomePageState extends State<HomePage> {
   Future<void> _updateFingerprintCount() async {
     _fingerprintCount = await _fingerprintService.getFingerprintCount();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadFingerprintEntries() async {
+    final entries = await _fingerprintService.getAllFingerprints();
+    if (mounted) {
+      setState(() {
+        _fingerprintEntries = entries;
+      });
+      if (entries.isNotEmpty) {
+        final first = entries.first;
+        _mapController.move(
+          LatLng(first.latitude, first.longitude),
+          AppConfig.defaultMapZoom,
+        );
+      }
+    }
   }
 
   Future<void> _getDeviceLocation() async {
@@ -175,6 +197,13 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _locationEstimate = estimate;
         });
+
+        if (estimate != null && estimate.isReliable) {
+          _mapController.move(
+            LatLng(estimate.latitude, estimate.longitude),
+            AppConfig.defaultMapZoom,
+          );
+        }
       }
 
       if (mounted) {
@@ -244,6 +273,7 @@ class _HomePageState extends State<HomePage> {
       _currentScanResult = null;
 
       await _updateFingerprintCount();
+      await _loadFingerprintEntries();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -324,6 +354,10 @@ class _HomePageState extends State<HomePage> {
             _buildWifiScanSection(),
             const SizedBox(height: 16),
             
+            // بخش نقشه و نقاط مرجع
+            _buildMapSection(),
+            const SizedBox(height: 16),
+            
             // بخش نتایج سیگنال‌ها
             _buildSignalResultsSection(),
             const SizedBox(height: 16),
@@ -345,6 +379,114 @@ class _HomePageState extends State<HomePage> {
               backgroundColor: Colors.orange,
             )
           : null,
+    );
+  }
+
+  Widget _buildMapSection() {
+    final referenceMarkers = _fingerprintEntries
+        .map(
+          (entry) => Marker(
+            point: LatLng(entry.latitude, entry.longitude),
+            width: 30,
+            height: 30,
+            child: Tooltip(
+              message: entry.zoneLabel ?? entry.fingerprintId,
+              child: const Icon(
+                Icons.place,
+                color: Colors.deepOrange,
+                size: 24,
+              ),
+            ),
+          ),
+        )
+        .toList();
+
+    final estimateMarker = (_locationEstimate != null &&
+            _locationEstimate!.isReliable)
+        ? [
+            Marker(
+              point: LatLng(
+                _locationEstimate!.latitude,
+                _locationEstimate!.longitude,
+              ),
+              width: 40,
+              height: 40,
+              child: const Icon(
+                Icons.my_location,
+                color: Colors.blue,
+                size: 32,
+              ),
+            ),
+          ]
+        : <Marker>[];
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: Icon(Icons.map, color: Colors.blue.shade700),
+        title: const Text(
+          'نمایش نقشه و نقاط مرجع',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          '${_fingerprintEntries.length} نقطه مرجع ثبت شده',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        initiallyExpanded: _expandedMap,
+        onExpansionChanged: (expanded) {
+          setState(() => _expandedMap = expanded);
+        },
+        children: [
+          Container(
+            height: 280,
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _getInitialMapCenter(),
+                  initialZoom: AppConfig.defaultMapZoom,
+                  minZoom: AppConfig.minMapZoom,
+                  maxZoom: AppConfig.maxMapZoom,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.wifi_knn_locator',
+                  ),
+                  if (referenceMarkers.isNotEmpty)
+                    MarkerLayer(markers: referenceMarkers),
+                  if (estimateMarker.isNotEmpty)
+                    MarkerLayer(markers: estimateMarker),
+                  if (_currentPosition != null && _useGeolocation)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(
+                            _currentPosition!.latitude,
+                            _currentPosition!.longitude,
+                          ),
+                          width: 30,
+                          height: 30,
+                          child: const Icon(
+                            Icons.person_pin_circle,
+                            color: Colors.green,
+                            size: 28,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1007,5 +1149,19 @@ class _HomePageState extends State<HomePage> {
     if (rssi >= AppConfig.fairRssi) return Colors.orange;
     if (rssi >= AppConfig.poorRssi) return Colors.deepOrange;
     return Colors.red;
+  }
+
+  LatLng _getInitialMapCenter() {
+    if (_locationEstimate != null && _locationEstimate!.isReliable) {
+      return LatLng(_locationEstimate!.latitude, _locationEstimate!.longitude);
+    }
+    if (_fingerprintEntries.isNotEmpty) {
+      final first = _fingerprintEntries.first;
+      return LatLng(first.latitude, first.longitude);
+    }
+    if (_currentPosition != null) {
+      return LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+    }
+    return LatLng(AppConfig.defaultLatitude, AppConfig.defaultLongitude);
   }
 }
