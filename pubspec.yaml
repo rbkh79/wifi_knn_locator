@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   permission_handler: ^12.0.1
-  url_launcher: any
+  url_launcher: ^6.3.1   # <-- این خط رو تغییر بده
   csv: ^6.0.0
   wifi_scan: ^0.4.1+2
   flutter_map: ^7.0.2
