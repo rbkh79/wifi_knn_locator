@@ -179,13 +179,32 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // اجرای اسکن
+      // اجرای اسکن - حتی اگر GPS خاموش باشد
       final scanResult = await WifiScanner.performScan();
 
       setState(() {
         _currentScanResult = scanResult;
         _expandedSignalResults = true; // باز کردن بخش نتایج
       });
+
+      // بررسی اینکه آیا شبکه‌ای پیدا شده است
+      if (scanResult.accessPoints.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'هیچ شبکه Wi-Fi یافت نشد. لطفاً:\n'
+                '1. Wi-Fi را روشن کنید\n'
+                '2. مجوز Location را در تنظیمات فعال کنید\n'
+                '3. دوباره تلاش کنید',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
 
       // اگر در حالت آموزش نیستیم، تخمین موقعیت انجام می‌دهیم
       if (!_isTrainingMode) {
@@ -209,9 +228,11 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_isTrainingMode
-                ? 'اسکن انجام شد. اکنون مختصات را وارد کنید.'
-                : 'اسکن با موفقیت انجام شد!'),
+            content: Text(
+              _isTrainingMode
+                  ? 'اسکن انجام شد. ${scanResult.accessPoints.length} شبکه یافت شد.'
+                  : 'اسکن با موفقیت انجام شد! ${scanResult.accessPoints.length} شبکه یافت شد.',
+            ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -222,8 +243,14 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطا در اسکن: $e'),
+            content: Text(
+              'خطا در اسکن: $e\n'
+              'لطفاً مطمئن شوید:\n'
+              '1. Wi-Fi روشن است\n'
+              '2. مجوز Location داده شده است',
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }

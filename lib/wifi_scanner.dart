@@ -32,41 +32,68 @@ class WifiScanner {
   /// اجرای اسکن Wi-Fi
   /// 
   /// این متد:
-  /// 1. مجوزها را بررسی می‌کند
+  /// 1. مجوزها را بررسی می‌کند (اما حتی بدون GPS هم کار می‌کند)
   /// 2. اسکن را شروع می‌کند
   /// 3. نتایج را جمع‌آوری می‌کند
   /// 4. WifiScanResult را برمی‌گرداند
   static Future<WifiScanResult> performScan() async {
-    // بررسی مجوزها
+    // بررسی مجوزها - اما حتی اگر Location Service خاموش باشد، سعی می‌کنیم
     final hasPermission = await checkPermissions();
     if (!hasPermission) {
+      // درخواست مجوز - اما اگر رد شد، باز هم ادامه می‌دهیم
       final granted = await requestPermissions();
       if (!granted) {
-        throw Exception('Location permission not granted');
+        debugPrint('Location permission not granted, but continuing anyway...');
+        // ادامه می‌دهیم - ممکن است در برخی دستگاه‌ها کار کند
       }
     }
 
     // دریافت شناسه دستگاه (هش‌شده)
     final deviceId = await PrivacyUtils.getDeviceId();
 
-    // شروع اسکن
+    // بررسی اینکه آیا می‌توانیم نتایج را دریافت کنیم
+    try {
+      final canGet = await WiFiScan.instance.canGetScannedResults();
+      if (canGet != CanGetScannedResults.yes) {
+        debugPrint('Cannot get scanned results: $canGet');
+        // باز هم سعی می‌کنیم - ممکن است کار کند
+      }
+    } catch (e) {
+      debugPrint('Error checking canGetScannedResults: $e');
+      // ادامه می‌دهیم
+    }
+
+    // شروع اسکن - حتی اگر Location Service خاموش باشد
     try {
       await WiFiScan.instance.startScan();
+      debugPrint('WiFi scan started successfully');
     } catch (e) {
       debugPrint('startScan() error: $e');
-      // ادامه می‌دهیم حتی اگر startScan خطا بدهد
+      // ادامه می‌دهیم - ممکن است نتایج قبلی موجود باشد
     }
 
     // انتظار برای نتایج
     await Future.delayed(AppConfig.scanWaitTime);
 
-    // دریافت نتایج
+    // دریافت نتایج - چند بار تلاش می‌کنیم
     List<dynamic>? results;
-    try {
-      results = await WiFiScan.instance.getScannedResults();
-    } catch (e) {
-      debugPrint('getScannedResults() error: $e');
-      results = null;
+    int retryCount = 0;
+    const maxRetries = 3;
+    
+    while (results == null && retryCount < maxRetries) {
+      try {
+        results = await WiFiScan.instance.getScannedResults();
+        if (results != null && results.isNotEmpty) {
+          debugPrint('Got ${results.length} WiFi networks');
+          break;
+        }
+      } catch (e) {
+        debugPrint('getScannedResults() attempt ${retryCount + 1} error: $e');
+        if (retryCount < maxRetries - 1) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+      retryCount++;
     }
 
     // تبدیل نتایج به WifiReading
@@ -94,6 +121,15 @@ class WifiScanner {
           debugPrint('Error parsing network: $e');
         }
       }
+    }
+
+    // اگر هیچ نتیجه‌ای پیدا نشد، پیام هشدار می‌دهیم اما خطا نمی‌دهیم
+    if (accessPoints.isEmpty) {
+      debugPrint('No WiFi networks found. This might be because:');
+      debugPrint('1. Location permission is not granted');
+      debugPrint('2. Location Service is disabled (but this should not prevent WiFi scan)');
+      debugPrint('3. No WiFi networks are available');
+      debugPrint('4. WiFi is disabled on the device');
     }
 
     // مرتب‌سازی بر اساس RSSI (قوی‌ترین اول)
