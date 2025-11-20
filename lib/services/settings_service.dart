@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../config.dart';
 
 /// سرویس مدیریت تنظیمات اپلیکیشن
@@ -28,9 +29,27 @@ class SettingsService {
     await init();
     return {
       'useGeolocation': await getUseGeolocation(),
+      'userId': await getOrCreateUserId(),
     };
   }
+
+  /// دریافت یا ایجاد شناسه یکتای کاربر
+  static Future<String> getOrCreateUserId() async {
+    await init();
+    final existing = _prefs?.getString(AppConfig.userIdKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+
+    final uuid = const Uuid().v4();
+    await _prefs?.setString(AppConfig.userIdKey, uuid);
+    return uuid;
+  }
 }
+
+
+
+
 
 
 

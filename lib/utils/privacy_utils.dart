@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import '../config.dart';
+import '../services/settings_service.dart';
 
 /// ابزارهای مربوط به حریم خصوصی
 
@@ -38,19 +39,17 @@ class PrivacyUtils {
     return '${mac.substring(0, maxLength)}...';
   }
 
-  /// تولید شناسه یکتا برای دستگاه (بر اساس MAC هش‌شده)
+  /// دریافت شناسه یکتا برای دستگاه/کاربر
   static Future<String> getDeviceId() async {
-    // در Flutter، برای دریافت MAC واقعی نیاز به پکیج‌های native داریم
-    // برای حال حاضر، از یک شناسه تصادفی استفاده می‌کنیم
-    // در تولید واقعی، می‌توان از device_info_plus استفاده کرد
-    try {
-      // شبیه‌سازی MAC address (در تولید واقعی باید از دستگاه واقعی بگیریم)
-      final simulatedMac = '00:${DateTime.now().millisecondsSinceEpoch.toRadixString(16).substring(0, 10)}';
-      return hashMacAddress(simulatedMac);
-    } catch (e) {
-      // Fallback: استفاده از timestamp
-      return hashMacAddress(DateTime.now().toIso8601String());
+    // از shared_preferences استفاده می‌کنیم تا برای هر نصب شناسه ثابت داشته باشد
+    final userId = await SettingsService.getOrCreateUserId();
+    if (AppConfig.hashDeviceMac) {
+      // برای سازگاری با سیاست‌های حریم خصوصی، هش شده نگه می‌داریم
+      final bytes = utf8.encode(userId);
+      final digest = sha256.convert(bytes);
+      return digest.toString().substring(0, 16);
     }
+    return userId;
   }
 }
 

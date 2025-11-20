@@ -12,11 +12,12 @@ class AppConfig {
 
   // پارامترهای پایگاه داده
   static const String databaseName = 'wifi_fingerprints.db';
-  static const int databaseVersion = 1;
+  static const int databaseVersion = 2;
 
   // پارامترهای حریم خصوصی
   static const bool hashDeviceMac = true;
   static const bool showFullMacAddresses = false; // نمایش کامل MAC یا بخشی از آن
+  static const String userIdKey = 'user_uuid';
 
   // آدرس بک‌اند (اختیاری)
   static const String? backendUrl = null; // 'https://api.example.com'

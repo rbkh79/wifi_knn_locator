@@ -11,6 +11,8 @@ import 'knn_localization.dart';
 import 'services/fingerprint_service.dart';
 import 'services/location_service.dart';
 import 'services/settings_service.dart';
+import 'services/data_logger_service.dart';
+import 'services/movement_prediction_service.dart';
 import 'utils/privacy_utils.dart';
 
 void main() async {
@@ -53,6 +55,7 @@ class _HomePageState extends State<HomePage> {
   bool _isTrainingMode = false;
   WifiScanResult? _currentScanResult;
   LocationEstimate? _locationEstimate;
+  MovementPrediction? _movementPrediction;
   Position? _currentPosition;
   String? _deviceId;
   int _fingerprintCount = 0;
@@ -71,6 +74,8 @@ class _HomePageState extends State<HomePage> {
   late final LocalDatabase _database;
   late final KnnLocalization _knnLocalization;
   late final FingerprintService _fingerprintService;
+  late final DataLoggerService _dataLogger;
+  late final MovementPredictionService _movementPredictionService;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -88,6 +93,8 @@ class _HomePageState extends State<HomePage> {
     _database = LocalDatabase.instance;
     _knnLocalization = KnnLocalization(_database);
     _fingerprintService = FingerprintService(_database);
+    _dataLogger = DataLoggerService(_database);
+    _movementPredictionService = MovementPredictionService(_database);
     
     // دریافت شناسه دستگاه
     _deviceId = await PrivacyUtils.getDeviceId();
@@ -176,11 +183,15 @@ class _HomePageState extends State<HomePage> {
       _loading = true;
       _currentScanResult = null;
       _locationEstimate = null;
+      _movementPrediction = null;
     });
 
     try {
       // اجرای اسکن - حتی اگر GPS خاموش باشد
       final scanResult = await WifiScanner.performScan();
+
+      // ثبت تاریخچه اسکن
+      await _dataLogger.logWifiScan(scanResult);
 
       setState(() {
         _currentScanResult = scanResult;
@@ -218,10 +229,21 @@ class _HomePageState extends State<HomePage> {
         });
 
         if (estimate != null && estimate.isReliable) {
+          await _dataLogger.logLocationEstimate(
+            deviceId: scanResult.deviceId,
+            estimate: estimate,
+          );
+
+          await _updateMovementPrediction(scanResult.deviceId);
+
           _mapController.move(
             LatLng(estimate.latitude, estimate.longitude),
             AppConfig.defaultMapZoom,
           );
+        } else {
+          setState(() {
+            _movementPrediction = null;
+          });
         }
       }
 
@@ -288,6 +310,7 @@ class _HomePageState extends State<HomePage> {
     try {
       // انجام اسکن Wi-Fi
       final scanResult = await WifiScanner.performScan();
+      await _dataLogger.logWifiScan(scanResult);
 
       if (scanResult.accessPoints.isEmpty) {
         if (mounted) {
@@ -410,6 +433,15 @@ class _HomePageState extends State<HomePage> {
         ),
       ],
     );
+  }
+
+  Future<void> _updateMovementPrediction(String deviceId) async {
+    final prediction = await _movementPredictionService.predictNextZone(deviceId);
+    if (mounted) {
+      setState(() {
+        _movementPrediction = prediction;
+      });
+    }
   }
 
   Future<void> _saveFingerprint() async {
@@ -1053,6 +1085,76 @@ class _HomePageState extends State<HomePage> {
                     ),
                                       ),
                   const SizedBox(height: 16),
+                  if (_movementPrediction != null &&
+                      _movementPrediction!.hasPrediction)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.trending_up,
+                              color: Colors.blue.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'پیش‌بینی حرکت بعدی (Markov)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'ناحیه احتمالی: ${_movementPrediction!.predictedZone}',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade900,
+                                  ),
+                                ),
+                                Text(
+                                  'اعتماد: ${(100 * _movementPrediction!.probability).toStringAsFixed(1)}%',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_movementPrediction == null ||
+                      !_movementPrediction!.hasPrediction) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: Colors.grey.shade600),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'برای پیش‌بینی حرکت، ابتدا چند تخمین موقعیت معتبر ثبت کنید.',
+                              style: TextStyle(color: Colors.grey.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ] else if (_locationEstimate != null && !_locationEstimate!.isReliable) ...[
                   Container(
                     padding: const EdgeInsets.all(12),

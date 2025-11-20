@@ -170,3 +170,70 @@ class DistanceRecord {
   });
 }
 
+/// لاگ اسکن Wi-Fi (برای ذخیره‌سازی تاریخچه)
+class WifiScanLog {
+  final int? id;
+  final String deviceId;
+  final DateTime timestamp;
+  final List<WifiScanLogEntry> readings;
+
+  WifiScanLog({
+    this.id,
+    required this.deviceId,
+    required this.timestamp,
+    required this.readings,
+  });
+}
+
+class WifiScanLogEntry {
+  final int? id;
+  final String bssid;
+  final int rssi;
+  final int? frequency;
+  final String? ssid;
+
+  WifiScanLogEntry({
+    this.id,
+    required this.bssid,
+    required this.rssi,
+    this.frequency,
+    this.ssid,
+  });
+}
+
+/// تاریخچه موقعیت برای هر کاربر
+class LocationHistoryEntry {
+  final int? id;
+  final String deviceId;
+  final double latitude;
+  final double longitude;
+  final String? zoneLabel;
+  final double confidence;
+  final DateTime timestamp;
+
+  LocationHistoryEntry({
+    this.id,
+    required this.deviceId,
+    required this.latitude,
+    required this.longitude,
+    this.zoneLabel,
+    required this.confidence,
+    required this.timestamp,
+  });
+}
+
+/// خروجی پیش‌بینی حرکت (Markov)
+class MovementPrediction {
+  final String? predictedZone;
+  final double probability;
+  final DateTime generatedAt;
+
+  MovementPrediction({
+    required this.predictedZone,
+    required this.probability,
+    required this.generatedAt,
+  });
+
+  bool get hasPrediction => predictedZone != null && probability > 0;
+}
+
