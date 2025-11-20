@@ -13,6 +13,8 @@ import 'services/location_service.dart';
 import 'services/settings_service.dart';
 import 'services/data_logger_service.dart';
 import 'services/movement_prediction_service.dart';
+import 'services/data_export_service.dart';
+import 'services/fingerprint_validator.dart';
 import 'utils/privacy_utils.dart';
 
 void main() async {
@@ -69,6 +71,8 @@ class _HomePageState extends State<HomePage> {
   bool _expandedSignalResults = false;
   bool _expandedSettings = false;
   bool _expandedMap = true;
+  bool _expandedResearcherMode = false;
+  bool _useValidation = true; // استفاده از validation برای fingerprintها
   
   // Services
   late final LocalDatabase _database;
@@ -76,6 +80,7 @@ class _HomePageState extends State<HomePage> {
   late final FingerprintService _fingerprintService;
   late final DataLoggerService _dataLogger;
   late final MovementPredictionService _movementPredictionService;
+  late final DataExportService _dataExportService;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -95,6 +100,7 @@ class _HomePageState extends State<HomePage> {
     _fingerprintService = FingerprintService(_database);
     _dataLogger = DataLoggerService(_database);
     _movementPredictionService = MovementPredictionService(_database);
+    _dataExportService = DataExportService(_database);
     
     // دریافت شناسه دستگاه
     _deviceId = await PrivacyUtils.getDeviceId();
@@ -324,12 +330,41 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
+      // اعتبارسنجی (اگر فعال باشد)
+      List<WifiReading> validatedAps = scanResult.accessPoints;
+      if (_useValidation) {
+        final validationResult = await FingerprintValidator.validateFingerprint(
+          latitude: point.latitude,
+          longitude: point.longitude,
+        );
+        
+        if (!validationResult.isValid) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('اعتبارسنجی ناموفق: ${validationResult.reason}'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+        validatedAps = validationResult.filteredAccessPoints;
+      }
+
       // ذخیره اثرانگشت با مختصات نقطه کلیک شده
+      final validatedScanResult = WifiScanResult(
+        deviceId: scanResult.deviceId,
+        timestamp: scanResult.timestamp,
+        accessPoints: validatedAps,
+      );
+      
       await _fingerprintService.saveFingerprint(
         latitude: point.latitude,
         longitude: point.longitude,
         zoneLabel: zoneLabel.isEmpty ? null : zoneLabel,
-        scanResult: scanResult,
+        scanResult: validatedScanResult,
       );
 
       // به‌روزرسانی لیست نقاط مرجع
@@ -469,11 +504,41 @@ class _HomePageState extends State<HomePage> {
     }
 
     try {
+      // اعتبارسنجی (اگر فعال باشد)
+      List<WifiReading> validatedAps = _currentScanResult!.accessPoints;
+      if (_useValidation) {
+        final validationResult = await FingerprintValidator.validateFingerprint(
+          latitude: lat,
+          longitude: lon,
+        );
+        
+        if (!validationResult.isValid) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('اعتبارسنجی ناموفق: ${validationResult.reason}'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+        validatedAps = validationResult.filteredAccessPoints;
+      }
+
+      // ذخیره با داده‌های validated
+      final validatedScanResult = WifiScanResult(
+        deviceId: _currentScanResult!.deviceId,
+        timestamp: _currentScanResult!.timestamp,
+        accessPoints: validatedAps,
+      );
+
       await _fingerprintService.saveFingerprint(
         latitude: lat,
         longitude: lon,
         zoneLabel: _zoneController.text.isEmpty ? null : _zoneController.text,
-        scanResult: _currentScanResult,
+        scanResult: validatedScanResult,
       );
 
       // پاک کردن فیلدها
@@ -574,6 +639,10 @@ class _HomePageState extends State<HomePage> {
             
             // بخش تنظیمات
             _buildSettingsSection(),
+            const SizedBox(height: 16),
+            
+            // بخش Researcher Mode
+            _buildResearcherModeSection(),
             const SizedBox(height: 16),
             
             // اطلاعات شفافیت
@@ -1346,6 +1415,201 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  Widget _buildResearcherModeSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: Icon(Icons.science, color: Colors.purple.shade700),
+        title: const Text(
+          'حالت پژوهشگر (Researcher Mode)',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text(
+          'ابزارهای تحلیل و Export داده‌ها',
+          style: TextStyle(fontSize: 12),
+        ),
+        initiallyExpanded: _expandedResearcherMode,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            _expandedResearcherMode = expanded;
+          });
+        },
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Export Data
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportData,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Export تمام داده‌ها (CSV)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportDataJson,
+                    icon: const Icon(Icons.code),
+                    label: const Text('Export تمام داده‌ها (JSON)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const Divider(),
+                // Statistics
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _dataExportService.getStatistics(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData) {
+                      return const Text('خطا در دریافت آمار');
+                    }
+                    final stats = snapshot.data!;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'آمار داده‌ها:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildStatRow('تعداد Fingerprintها', stats['total_fingerprints'].toString()),
+                        _buildStatRow('تعداد اسکن‌های Wi-Fi', stats['total_wifi_scans'].toString()),
+                        _buildStatRow('تعداد تخمین موقعیت', stats['total_location_estimates'].toString()),
+                        _buildStatRow('BSSIDهای یکتا', stats['unique_bssids'].toString()),
+                        _buildStatRow(
+                          'میانگین Confidence',
+                          '${(stats['average_confidence'] as double * 100).toStringAsFixed(1)}%',
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const Divider(),
+                // Validation Toggle
+                SwitchListTile(
+                  title: const Text('استفاده از Validation'),
+                  subtitle: const Text(
+                    'اعتبارسنجی خودکار اثرانگشت‌ها (چند اسکن + بررسی همگرایی)',
+                  ),
+                  value: _useValidation,
+                  onChanged: (value) {
+                    setState(() {
+                      _useValidation = value;
+                    });
+                  },
+                  secondary: Icon(
+                    _useValidation ? Icons.verified : Icons.verified_user_outlined,
+                    color: _useValidation ? Colors.green : Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: Colors.grey.shade700)),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportData() async {
+    try {
+      setState(() => _loading = true);
+      final filePath = await _dataExportService.exportAllDataToCsv();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('داده‌ها با موفقیت Export شدند!\n$filePath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در Export: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _exportDataJson() async {
+    try {
+      setState(() => _loading = true);
+      final filePath = await _dataExportService.exportAllDataToJson();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('داده‌ها با موفقیت Export شدند!\n$filePath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در Export: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
   Widget _buildTransparencyInfo() {

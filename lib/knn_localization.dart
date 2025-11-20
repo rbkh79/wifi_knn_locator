@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'data_model.dart';
 import 'config.dart';
 import 'local_database.dart';
+import 'utils/rssi_filter.dart';
 
 /// پیاده‌سازی الگوریتم KNN برای تخمین موقعیت
 class KnnLocalization {
@@ -102,10 +103,11 @@ class KnnLocalization {
     );
   }
 
-  /// محاسبه فاصله بین دو بردار Wi-Fi
+  /// محاسبه فاصله بین دو بردار Wi-Fi با وزن‌دهی RSSI
   /// 
-  /// از فاصله اقلیدسی استفاده می‌کند:
-  /// - برای هر BSSID مشترک: (RSSI1 - RSSI2)²
+  /// از فاصله اقلیدسی وزن‌دار استفاده می‌کند:
+  /// - برای هر BSSID مشترک: (RSSI1 - RSSI2)² * weight
+  /// - وزن بر اساس قدرت RSSI محاسبه می‌شود
   /// - برای BSSID‌های غیرمشترک: مقدار پیش‌فرض (-100) استفاده می‌شود
   double _calculateDistance(List<WifiReading> observed, List<WifiReading> fingerprint) {
     // ساخت Map برای دسترسی سریع‌تر
@@ -122,7 +124,7 @@ class KnnLocalization {
     // جمع‌آوری تمام BSSID‌ها (اتحاد دو مجموعه)
     final allBssids = <String>{...observedMap.keys, ...fingerprintMap.keys};
 
-    // محاسبه فاصله اقلیدسی
+    // محاسبه فاصله اقلیدسی وزن‌دار
     double distance = 0.0;
     const defaultRssi = -100; // مقدار پیش‌فرض برای APهای مشاهده نشده
 
@@ -131,7 +133,16 @@ class KnnLocalization {
       final fpRssi = fingerprintMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
       
       final diff = obsRssi - fpRssi;
-      distance += diff * diff;
+      
+      // وزن‌دهی RSSI (اگر فعال باشد)
+      if (AppConfig.useRssiWeighting) {
+        // استفاده از میانگین RSSI برای محاسبه وزن
+        final avgRssi = ((obsRssi + fpRssi) / 2).round();
+        final weight = RssiFilter.calculateRssiWeight(avgRssi);
+        distance += diff * diff * weight;
+      } else {
+        distance += diff * diff;
+      }
     }
 
     // ریشه دوم فاصله اقلیدسی

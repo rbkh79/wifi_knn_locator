@@ -45,5 +45,12 @@ class AppConfig {
   // تنظیمات موقعیت جغرافیایی
   static const String useGeolocationKey = 'use_geolocation';
   static const bool defaultUseGeolocation = true; // به صورت پیش‌فرض فعال است
+
+  // تنظیمات بهبود KNN
+  static const bool useRssiWeighting = true; // وزن‌دهی RSSI
+  static const bool useNoiseFiltering = true; // فیلتر نویز
+  static const int minApOccurrencePercent = 70; // حداقل درصد تکرار AP برای ذخیره
+  static const int validationScanCount = 3; // تعداد اسکن برای validation
+  static const double maxRssiVariance = 15.0; // حداکثر واریانس RSSI برای validation (dBm)
 }
 

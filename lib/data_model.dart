@@ -183,6 +183,15 @@ class WifiScanLog {
     required this.timestamp,
     required this.readings,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'device_id': deviceId,
+      'timestamp': timestamp.toIso8601String(),
+      'readings': readings.map((r) => r.toMap()).toList(),
+    };
+  }
 }
 
 class WifiScanLogEntry {
@@ -199,6 +208,16 @@ class WifiScanLogEntry {
     this.frequency,
     this.ssid,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'bssid': bssid,
+      'rssi': rssi,
+      'frequency': frequency,
+      'ssid': ssid,
+    };
+  }
 }
 
 /// تاریخچه موقعیت برای هر کاربر
@@ -220,6 +239,18 @@ class LocationHistoryEntry {
     required this.confidence,
     required this.timestamp,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'device_id': deviceId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'zone_label': zoneLabel,
+      'confidence': confidence,
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
 }
 
 /// خروجی پیش‌بینی حرکت (Markov)

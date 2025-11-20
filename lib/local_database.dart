@@ -426,6 +426,87 @@ class LocalDatabase {
         )
         .toList();
   }
+
+  /// دریافت تمام WiFi Scans (برای Export)
+  Future<List<WifiScanLog>> getAllWifiScans() async {
+    final db = await database;
+    final scans = await db.query('wifi_scans', orderBy: 'timestamp DESC');
+
+    final logs = <WifiScanLog>[];
+    for (final scan in scans) {
+      final scanId = scan['id'] as int;
+      final readingMaps = await db.query(
+        'wifi_scan_readings',
+        where: 'scan_id = ?',
+        whereArgs: [scanId],
+      );
+
+      final readings = readingMaps
+          .map(
+            (e) => WifiScanLogEntry(
+              id: e['id'] as int?,
+              bssid: e['bssid'] as String,
+              rssi: e['rssi'] as int,
+              frequency: e['frequency'] as int?,
+              ssid: e['ssid'] as String?,
+            ),
+          )
+          .toList();
+
+      logs.add(
+        WifiScanLog(
+          id: scanId,
+          deviceId: scan['device_id'] as String,
+          timestamp: DateTime.parse(scan['timestamp'] as String),
+          readings: readings,
+        ),
+      );
+    }
+
+    return logs;
+  }
+
+  /// دریافت readings یک WiFi Scan
+  Future<List<WifiScanLogEntry>> getWifiScanReadings(int scanId) async {
+    final db = await database;
+    final readingMaps = await db.query(
+      'wifi_scan_readings',
+      where: 'scan_id = ?',
+      whereArgs: [scanId],
+    );
+
+    return readingMaps
+        .map(
+          (e) => WifiScanLogEntry(
+            id: e['id'] as int?,
+            bssid: e['bssid'] as String,
+            rssi: e['rssi'] as int,
+            frequency: e['frequency'] as int?,
+            ssid: e['ssid'] as String?,
+          ),
+        )
+        .toList();
+  }
+
+  /// دریافت تمام Location History (برای Export)
+  Future<List<LocationHistoryEntry>> getAllLocationHistory() async {
+    final db = await database;
+    final rows = await db.query('location_history', orderBy: 'timestamp DESC');
+
+    return rows
+        .map(
+          (row) => LocationHistoryEntry(
+            id: row['id'] as int?,
+            deviceId: row['device_id'] as String,
+            latitude: row['latitude'] as double,
+            longitude: row['longitude'] as double,
+            zoneLabel: row['zone_label'] as String?,
+            confidence: (row['confidence'] as num).toDouble(),
+            timestamp: DateTime.parse(row['timestamp'] as String),
+          ),
+        )
+        .toList();
+  }
 }
 
 
