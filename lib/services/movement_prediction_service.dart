@@ -53,7 +53,7 @@ class MovementPredictionService {
       }
     });
 
-    final probability = total == 0 ? 0 : bestCount / total;
+    final double probability = total == 0 ? 0.0 : bestCount / total;
 
     return MovementPrediction(
       predictedZone: bestZone,
