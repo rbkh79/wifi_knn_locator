@@ -1499,7 +1499,7 @@ class _HomePageState extends State<HomePage> {
                         _buildStatRow('BSSIDهای یکتا', stats['unique_bssids'].toString()),
                         _buildStatRow(
                           'میانگین Confidence',
-                          '${(stats['average_confidence'] as double * 100).toStringAsFixed(1)}%',
+                          '${((stats['average_confidence'] as double) * 100).toStringAsFixed(1)}%',
                         ),
                       ],
                     );
