@@ -15,6 +15,7 @@ import 'services/data_logger_service.dart';
 import 'services/movement_prediction_service.dart';
 import 'services/data_export_service.dart';
 import 'services/fingerprint_validator.dart';
+import 'services/path_analysis_service.dart';
 import 'utils/privacy_utils.dart';
 
 void main() async {
@@ -81,6 +82,11 @@ class _HomePageState extends State<HomePage> {
   late final DataLoggerService _dataLogger;
   late final MovementPredictionService _movementPredictionService;
   late final DataExportService _dataExportService;
+  late final PathAnalysisService _pathAnalysisService;
+  
+  // Path visualization
+  List<LocationHistoryEntry> _userPath = [];
+  bool _showPath = true;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -101,6 +107,7 @@ class _HomePageState extends State<HomePage> {
     _dataLogger = DataLoggerService(_database);
     _movementPredictionService = MovementPredictionService(_database);
     _dataExportService = DataExportService(_database);
+    _pathAnalysisService = PathAnalysisService(_database);
     
     // دریافت شناسه دستگاه
     _deviceId = await PrivacyUtils.getDeviceId();
@@ -112,7 +119,26 @@ class _HomePageState extends State<HomePage> {
     _updateFingerprintCount();
     await _loadFingerprintEntries();
     
+    // بارگذاری مسیر کاربر
+    await _loadUserPath();
+    
     setState(() {});
+  }
+
+  /// بارگذاری مسیر کاربر برای نمایش روی نقشه
+  Future<void> _loadUserPath() async {
+    if (_deviceId == null) return;
+    
+    try {
+      final path = await _pathAnalysisService.getUserPath(_deviceId!);
+      if (mounted) {
+        setState(() {
+          _userPath = path;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading user path: $e');
+    }
   }
 
   Future<void> _updateFingerprintCount() async {
@@ -241,6 +267,9 @@ class _HomePageState extends State<HomePage> {
           );
 
           await _updateMovementPrediction(scanResult.deviceId);
+          
+          // به‌روزرسانی مسیر کاربر
+          await _loadUserPath();
 
           _mapController.move(
             LatLng(estimate.latitude, estimate.longitude),
@@ -717,31 +746,122 @@ class _HomePageState extends State<HomePage> {
           setState(() => _expandedMap = expanded);
         },
         children: [
-          // راهنمای استفاده
+          // راهنمای استفاده و کنترل‌های مسیر
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.touch_app, color: Colors.blue.shade700, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'برای اضافه کردن نقطه مرجع، روی نقشه کلیک کنید. اسکن Wi-Fi به صورت خودکار انجام می‌شود.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue.shade900,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.touch_app, color: Colors.blue.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'برای اضافه کردن نقطه مرجع، روی نقشه کلیک کنید. اسکن Wi-Fi به صورت خودکار انجام می‌شود.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // نمایش اطلاعات مسیر و کنترل نمایش
+                Row(
+                  children: [
+                    Expanded(
+                      child: FutureBuilder<Map<String, dynamic>>(
+                        future: _deviceId != null
+                            ? _pathAnalysisService.getPathStatistics(_deviceId!)
+                            : Future.value({
+                                'total_points': 0,
+                                'total_distance_meters': 0.0,
+                                'total_time_seconds': 0,
+                              }),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const SizedBox.shrink();
+                          }
+                          final stats = snapshot.data ?? {
+                            'total_points': 0,
+                            'total_distance_meters': 0.0,
+                            'total_time_seconds': 0,
+                          };
+                          final distanceKm = (stats['total_distance_meters'] as num) / 1000;
+                          final timeHours = (stats['total_time_seconds'] as num) / 3600;
+                          
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.purple.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.route, color: Colors.purple.shade700, size: 20),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'مسیر حرکت:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        color: Colors.purple.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'طول: ${distanceKm.toStringAsFixed(2)} کیلومتر',
+                                  style: TextStyle(fontSize: 11, color: Colors.purple.shade800),
+                                ),
+                                Text(
+                                  'نقاط: ${stats['total_points']}',
+                                  style: TextStyle(fontSize: 11, color: Colors.purple.shade800),
+                                ),
+                                if (timeHours > 0)
+                                  Text(
+                                    'زمان: ${timeHours.toStringAsFixed(2)} ساعت',
+                                    style: TextStyle(fontSize: 11, color: Colors.purple.shade800),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 8),
+                    // دکمه نمایش/مخفی کردن مسیر
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _showPath = !_showPath;
+                        });
+                      },
+                      icon: Icon(_showPath ? Icons.visibility_off : Icons.visibility),
+                      label: Text(_showPath ? 'مخفی کردن مسیر' : 'نمایش مسیر'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           Container(
@@ -771,6 +891,21 @@ class _HomePageState extends State<HomePage> {
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.example.wifi_knn_locator',
                   ),
+                  // نمایش مسیر کاربر (Polyline)
+                  if (_showPath && _userPath.length > 1)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _userPath
+                              .map((entry) => LatLng(entry.latitude, entry.longitude))
+                              .toList(),
+                          strokeWidth: 3.0,
+                          color: Colors.purple,
+                          borderStrokeWidth: 1.0,
+                          borderColor: Colors.purple.shade300,
+                        ),
+                      ],
+                    ),
                   if (referenceMarkers.isNotEmpty)
                     MarkerLayer(markers: referenceMarkers),
                   if (estimateMarker.isNotEmpty)
@@ -789,6 +924,25 @@ class _HomePageState extends State<HomePage> {
                             Icons.person_pin_circle,
                             color: Colors.green,
                             size: 28,
+                          ),
+                        ),
+                      ],
+                    ),
+                  // نمایش نقطه فعلی روی مسیر (آخرین نقطه)
+                  if (_showPath && _userPath.isNotEmpty && _locationEstimate != null && _locationEstimate!.isReliable)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(
+                            _locationEstimate!.latitude,
+                            _locationEstimate!.longitude,
+                          ),
+                          width: 35,
+                          height: 35,
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.red,
+                            size: 32,
                           ),
                         ),
                       ],
@@ -818,6 +972,10 @@ class _HomePageState extends State<HomePage> {
                           _buildLegendItem(Icons.place, Colors.deepOrange, 'نقاط مرجع'),
                           const SizedBox(height: 4),
                           _buildLegendItem(Icons.my_location, Colors.blue, 'تخمین KNN'),
+                          if (_showPath && _userPath.length > 1)
+                            _buildLegendItem(Icons.route, Colors.purple, 'مسیر حرکت'),
+                          if (_showPath && _userPath.isNotEmpty)
+                            _buildLegendItem(Icons.location_on, Colors.red, 'موقعیت فعلی'),
                           if (_currentPosition != null && _useGeolocation)
                             _buildLegendItem(Icons.person_pin_circle, Colors.green, 'GPS شما'),
                         ],
@@ -1553,17 +1711,14 @@ class _HomePageState extends State<HomePage> {
   Future<void> _exportData() async {
     try {
       setState(() => _loading = true);
-      final filePath = await _dataExportService.exportAllDataToCsv();
+      // دانلود و اشتراک‌گذاری فایل CSV
+      await _dataExportService.downloadAndShareCsv();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('داده‌ها با موفقیت Export شدند!\n$filePath'),
+          const SnackBar(
+            content: Text('فایل CSV آماده دانلود است! لطفاً از منوی اشتراک‌گذاری استفاده کنید.'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'OK',
-              onPressed: () {},
-            ),
+            duration: Duration(seconds: 3),
           ),
         );
       }
