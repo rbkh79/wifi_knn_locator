@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:math' as math;
@@ -135,16 +136,23 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
   Future<void> _loadImageSize() async {
     if (_mapImageFile == null) return;
     
-    final image = await _mapImageFile!.readAsBytes();
-    final codec = await PaintingBinding.instance.instantiateImageCodec(image);
-    final frame = await codec.getNextFrame();
-    
-    setState(() {
-      _imageSize = Size(
-        frame.image.width.toDouble(),
-        frame.image.height.toDouble(),
-      );
-    });
+    try {
+      final imageBytes = await _mapImageFile!.readAsBytes();
+      final codec = await ui.instantiateImageCodec(imageBytes);
+      final frame = await codec.getNextFrame();
+      
+      setState(() {
+        _imageSize = Size(
+          frame.image.width.toDouble(),
+          frame.image.height.toDouble(),
+        );
+      });
+      
+      // آزاد کردن منابع
+      frame.image.dispose();
+    } catch (e) {
+      debugPrint('Error loading image size: $e');
+    }
   }
 
   /// تبدیل پیکسل به متر
