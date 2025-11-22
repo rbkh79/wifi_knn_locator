@@ -16,7 +16,11 @@ import 'services/movement_prediction_service.dart';
 import 'services/data_export_service.dart';
 import 'services/fingerprint_validator.dart';
 import 'services/path_analysis_service.dart';
+import 'services/location_confidence_service.dart';
+import 'services/auto_csv_service.dart';
 import 'utils/privacy_utils.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -83,10 +87,14 @@ class _HomePageState extends State<HomePage> {
   late final MovementPredictionService _movementPredictionService;
   late final DataExportService _dataExportService;
   late final PathAnalysisService _pathAnalysisService;
+  late final LocationConfidenceService _locationConfidenceService;
   
   // Path visualization
   List<LocationHistoryEntry> _userPath = [];
   bool _showPath = true;
+  
+  // Location confidence state
+  LocationConfidenceService.ConfidenceResult? _confidenceResult;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -108,12 +116,16 @@ class _HomePageState extends State<HomePage> {
     _movementPredictionService = MovementPredictionService(_database);
     _dataExportService = DataExportService(_database);
     _pathAnalysisService = PathAnalysisService(_database);
+    _locationConfidenceService = LocationConfidenceService(_database);
     
     // دریافت شناسه دستگاه
     _deviceId = await PrivacyUtils.getDeviceId();
     
     // بارگذاری تنظیمات
     _useGeolocation = await SettingsService.getUseGeolocation();
+    
+    // مقداردهی اولیه سرویس CSV خودکار
+    await AutoCsvService.initialize();
     
     // بارگذاری تعداد اثرانگشت‌ها
     _updateFingerprintCount();
@@ -249,6 +261,16 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
+      // ذخیره خودکار در CSV (قبل از هر پردازشی)
+      await AutoCsvService.saveScanToCsv(
+        scanResult: scanResult,
+        gpsPosition: _currentPosition,
+        knnEstimate: null, // بعداً پر می‌شود
+        isReliable: null,
+        isNewLocation: null,
+        gpsKnnDistance: null,
+      );
+
       // اگر در حالت آموزش نیستیم، تخمین موقعیت انجام می‌دهیم
       if (!_isTrainingMode) {
         final estimate = await _knnLocalization.estimateLocation(
@@ -256,11 +278,85 @@ class _HomePageState extends State<HomePage> {
           k: AppConfig.defaultK,
         );
 
+        // بررسی اطمینان موقعیت
+        final confidenceResult = await _locationConfidenceService.checkLocationConfidence(
+          knnEstimate: estimate,
+          gpsPosition: _currentPosition,
+          scanResult: scanResult,
+        );
+
         setState(() {
           _locationEstimate = estimate;
+          _confidenceResult = confidenceResult;
         });
 
-        if (estimate != null && estimate.isReliable) {
+        // ذخیره مجدد CSV با اطلاعات کامل (KNN و confidence)
+        await AutoCsvService.saveScanToCsv(
+          scanResult: scanResult,
+          gpsPosition: _currentPosition,
+          knnEstimate: estimate,
+          isReliable: confidenceResult.isReliable,
+          isNewLocation: confidenceResult.isNewLocation,
+          gpsKnnDistance: confidenceResult.gpsKnnDistance,
+        );
+
+        // نمایش هشدار در صورت عدم اطمینان
+        if (!confidenceResult.isReliable || confidenceResult.isNewLocation) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.warning, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            confidenceResult.isNewLocation
+                                ? '⚠️ احتمالاً در مکان جدیدی هستید!'
+                                : '⚠️ ضریب اطمینان پایین است',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (confidenceResult.warningMessage != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        confidenceResult.warningMessage!,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                    if (confidenceResult.gpsKnnDistance != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'فاصله GPS-KNN: ${confidenceResult.gpsKnnDistance!.toStringAsFixed(0)} متر',
+                        style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ],
+                ),
+                backgroundColor: Colors.orange.shade700,
+                duration: const Duration(seconds: 6),
+                action: SnackBarAction(
+                  label: 'مشاهده',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    setState(() {
+                      _expandedSignalResults = true;
+                    });
+                  },
+                ),
+              ),
+            );
+          }
+        }
+
+        // اگر تخمین قابل اعتماد است، ثبت در history
+        if (estimate != null && confidenceResult.isReliable) {
           await _dataLogger.logLocationEstimate(
             deviceId: scanResult.deviceId,
             estimate: estimate,
@@ -280,6 +376,16 @@ class _HomePageState extends State<HomePage> {
             _movementPrediction = null;
           });
         }
+      } else {
+        // در حالت آموزش، فقط CSV را به‌روزرسانی می‌کنیم
+        await AutoCsvService.saveScanToCsv(
+          scanResult: scanResult,
+          gpsPosition: _currentPosition,
+          knnEstimate: null,
+          isReliable: null,
+          isNewLocation: null,
+          gpsKnnDistance: null,
+        );
       }
 
       if (mounted) {
@@ -1268,6 +1374,84 @@ class _HomePageState extends State<HomePage> {
                         child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                // نمایش هشدار عدم اطمینان
+                if (_confidenceResult != null && (!_confidenceResult!.isReliable || _confidenceResult!.isNewLocation)) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.shade300, width: 2),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 28),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _confidenceResult!.isNewLocation
+                                    ? '⚠️ احتمالاً در مکان جدیدی هستید!'
+                                    : '⚠️ ضریب اطمینان پایین است',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.orange.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_confidenceResult!.warningMessage != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            _confidenceResult!.warningMessage!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                        ],
+                        if (_confidenceResult!.gpsKnnDistance != null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.straighten, color: Colors.orange.shade700, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'فاصله GPS و KNN: ${_confidenceResult!.gpsKnnDistance!.toStringAsFixed(0)} متر',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Text(
+                          '💡 پیشنهاد: اگر در مکان جدیدی هستید، می‌توانید در حالت آموزش (Training Mode) اثرانگشت جدیدی ثبت کنید.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 // نمایش موقعیت تخمینی
                 if (_locationEstimate != null && _locationEstimate!.isReliable) ...[
                   Container(
@@ -1600,7 +1784,79 @@ class _HomePageState extends State<HomePage> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                // نمایش اطلاعات CSV خودکار
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _getAutoCsvInfo(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      final info = snapshot.data!;
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.file_copy, color: Colors.green.shade700, size: 20),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'CSV خودکار (Auto CSV)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'تعداد اسکن‌ها: ${info['row_count']}',
+                              style: TextStyle(fontSize: 12, color: Colors.green.shade800),
+                            ),
+                            if (info['file_size'] != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'اندازه فایل: ${(info['file_size'] / 1024).toStringAsFixed(2)} KB',
+                                style: TextStyle(fontSize: 12, color: Colors.green.shade800),
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+                            Text(
+                              '💡 در هر اسکن Wi-Fi، داده‌ها به صورت خودکار در CSV ذخیره می‌شوند.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.green.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+                const SizedBox(height: 16),
                 // Export Data
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportAutoCsv,
+                    icon: const Icon(Icons.download),
+                    label: const Text('دانلود CSV خودکار'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -1706,6 +1962,82 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  /// دریافت اطلاعات CSV خودکار
+  Future<Map<String, dynamic>> _getAutoCsvInfo() async {
+    try {
+      final rowCount = await AutoCsvService.getCsvRowCount();
+      final fileSize = await AutoCsvService.getCsvFileSize();
+      return {
+        'row_count': rowCount,
+        'file_size': fileSize ?? 0,
+      };
+    } catch (e) {
+      return {'row_count': 0, 'file_size': 0};
+    }
+  }
+
+  /// دانلود CSV خودکار
+  Future<void> _exportAutoCsv() async {
+    try {
+      setState(() => _loading = true);
+      final filePath = await AutoCsvService.getCsvFilePath();
+      
+      if (filePath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل CSV خودکار وجود ندارد یا هنوز اسکنی انجام نشده است.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل CSV خودکار پیدا نشد.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // استفاده از share_plus برای اشتراک‌گذاری
+      final xFile = XFile(filePath);
+      await Share.shareXFiles(
+        [xFile],
+        subject: 'WiFi KNN Locator - Auto CSV Export',
+        text: 'فایل CSV خودکار اسکن‌های Wi-Fi',
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('فایل CSV خودکار آماده دانلود است!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود CSV خودکار: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _exportData() async {
