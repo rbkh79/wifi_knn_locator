@@ -4,6 +4,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:csv/csv.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:open_file/open_file.dart';
 import '../local_database.dart';
 import '../data_model.dart';
 import 'path_analysis_service.dart';
@@ -227,22 +229,67 @@ class DataExportService {
     return file.path;
   }
 
-  /// دانلود و اشتراک‌گذاری فایل CSV
-  Future<void> downloadAndShareCsv() async {
+  /// دانلود مستقیم فایل CSV به پوشه Download
+  Future<String?> downloadCsvToDownloads() async {
     try {
+      // تولید فایل CSV
       final filePath = await exportAllDataToCsv();
       final file = File(filePath);
       
-      if (await file.exists()) {
-        final xFile = XFile(filePath);
-        await Share.shareXFiles(
-          [xFile],
-          subject: 'WiFi KNN Locator Data Export',
-          text: 'Export داده‌های WiFi KNN Locator',
-        );
+      if (!await file.exists()) {
+        debugPrint('CSV file does not exist: $filePath');
+        return null;
+      }
+
+      // خواندن محتوای فایل
+      final csvContent = await file.readAsString();
+
+      // درخواست دسترسی
+      if (!await Permission.storage.request().isGranted) {
+        debugPrint('Storage permission not granted');
+        return null;
+      }
+
+      try {
+        // مسیر پوشه دانلود اندروید
+        final Directory downloadsDir = Directory('/storage/emulated/0/Download');
+        if (!await downloadsDir.exists()) {
+          debugPrint('Downloads directory does not exist');
+          return null;
+        }
+
+        // نام فایل با timestamp
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final fileName = 'wifi_knn_data_$timestamp.csv';
+        final outFile = File('${downloadsDir.path}/$fileName');
+        
+        // ذخیره فایل
+        await outFile.writeAsString(csvContent, flush: true);
+        
+        debugPrint('CSV file saved to Downloads: ${outFile.path}');
+        return outFile.path;
+      } catch (e) {
+        debugPrint('Error saving CSV to Downloads: $e');
+        return null;
       }
     } catch (e) {
-      debugPrint('Error sharing CSV file: $e');
+      debugPrint('Error downloading CSV file: $e');
+      rethrow;
+    }
+  }
+
+  /// دانلود و اشتراک‌گذاری فایل CSV (برای سازگاری با کد قدیمی)
+  Future<void> downloadAndShareCsv() async {
+    try {
+      final downloadedPath = await downloadCsvToDownloads();
+      if (downloadedPath != null) {
+        // باز کردن فایل بعد از دانلود
+        await OpenFile.open(downloadedPath);
+      } else {
+        throw 'خطا در دانلود فایل CSV';
+      }
+    } catch (e) {
+      debugPrint('Error downloading CSV file: $e');
       rethrow;
     }
   }

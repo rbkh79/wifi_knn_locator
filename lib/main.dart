@@ -1984,47 +1984,30 @@ class _HomePageState extends State<HomePage> {
   Future<void> _exportAutoCsv() async {
     try {
       setState(() => _loading = true);
-      final filePath = await AutoCsvService.getCsvFilePath();
       
-      if (filePath == null) {
+      // دانلود مستقیم به پوشه Download
+      final downloadedPath = await AutoCsvService.saveCsvToDownloadsAndOpen(
+        fileName: 'wifi_knn_auto.csv',
+      );
+      
+      if (downloadedPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('فایل CSV خودکار وجود ندارد یا هنوز اسکنی انجام نشده است.'),
+              content: Text('فایل CSV خودکار وجود ندارد یا مجوز دسترسی داده نشده است.'),
               backgroundColor: Colors.orange,
             ),
           );
         }
         return;
       }
-
-      final file = File(filePath);
-      if (!await file.exists()) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('فایل CSV خودکار پیدا نشد.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
-      // استفاده از share_plus برای اشتراک‌گذاری
-      final xFile = XFile(filePath);
-      await Share.shareXFiles(
-        [xFile],
-        subject: 'WiFi KNN Locator - Auto CSV Export',
-        text: 'فایل CSV خودکار اسکن‌های Wi-Fi',
-      );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فایل CSV خودکار آماده دانلود است!'),
+          SnackBar(
+            content: Text('فایل CSV خودکار با موفقیت دانلود شد!\n$downloadedPath'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -2045,16 +2028,29 @@ class _HomePageState extends State<HomePage> {
   Future<void> _exportData() async {
     try {
       setState(() => _loading = true);
-      // دانلود و اشتراک‌گذاری فایل CSV
-      await _dataExportService.downloadAndShareCsv();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فایل CSV آماده دانلود است! لطفاً از منوی اشتراک‌گذاری استفاده کنید.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
+      // دانلود مستقیم فایل CSV به پوشه Download
+      final downloadedPath = await _dataExportService.downloadCsvToDownloads();
+      if (downloadedPath != null) {
+        // باز کردن فایل بعد از دانلود
+        await OpenFile.open(downloadedPath);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('فایل CSV با موفقیت دانلود شد!\n$downloadedPath'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('خطا در دانلود فایل CSV. لطفاً مجوز دسترسی را بررسی کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
