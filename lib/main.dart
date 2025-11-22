@@ -18,6 +18,7 @@ import 'services/fingerprint_validator.dart';
 import 'services/path_analysis_service.dart';
 import 'services/location_confidence_service.dart';
 import 'services/auto_csv_service.dart';
+import 'services/map_reference_point_picker.dart';
 import 'utils/privacy_utils.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -1881,6 +1882,30 @@ class _HomePageState extends State<HomePage> {
                     label: const Text('Export تمام داده‌ها (JSON)'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.purple.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MapReferencePointPicker(
+                            fingerprintService: _fingerprintService,
+                            database: _database,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.map),
+                    label: const Text('انتخاب نقطه مرجع روی نقشه'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),

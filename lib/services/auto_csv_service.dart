@@ -194,6 +194,23 @@ class AutoCsvService {
     }
   }
 
+  /// افزودن اسکن به CSV (برای استفاده در Map Reference Point Picker)
+  static Future<void> addScan({
+    required WifiScanResult scanResult,
+    required double latitude,
+    required double longitude,
+    String? zoneLabel,
+  }) async {
+    await saveScanToCsv(
+      scanResult: scanResult,
+      gpsPosition: null, // در این حالت GPS نداریم
+      knnEstimate: null,
+      isReliable: null,
+      isNewLocation: null,
+      gpsKnnDistance: null,
+    );
+  }
+
   /// ذخیره فایل CSV فعلی در فولدر Download گوشی و بازکردن آن
   static Future<String?> saveCsvToDownloadsAndOpen({String fileName = 'wifi_knn_auto.csv'}) async {
     // دریافت محتوا
