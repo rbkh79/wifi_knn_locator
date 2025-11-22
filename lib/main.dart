@@ -21,6 +21,8 @@ import 'services/auto_csv_service.dart';
 import 'utils/privacy_utils.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
+import 'package:open_file/open_file.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2272,5 +2274,35 @@ class _HomePageState extends State<HomePage> {
       return LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
     }
     return LatLng(AppConfig.defaultLatitude, AppConfig.defaultLongitude);
+  }
+
+  /// دانلود CSV خودکار و ذخیره در Download
+  Future<void> _downloadAutoCsvToDownloads() async {
+    setState(() => _loading = true);
+    try {
+      final path = await AutoCsvService.saveCsvToDownloadsAndOpen(fileName: 'wifi_knn_auto.csv');
+      if (path != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('فایل CSV در پوشه Download ذخیره و باز شد!\n$path'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        throw 'خطا در ذخیره فایل یا مجوز دسترسی!';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در ذخیره یا باز کردن CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 }

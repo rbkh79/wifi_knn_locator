@@ -7,6 +7,8 @@ import 'package:csv/csv.dart';
 import 'package:geolocator/geolocator.dart';
 import '../data_model.dart';
 import '../utils/privacy_utils.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:open_file/open_file.dart';
 
 /// سرویس ذخیره خودکار CSV در هر اسکن Wi-Fi
 class AutoCsvService {
@@ -189,6 +191,34 @@ class AutoCsvService {
       await _csvFile!.delete();
       _headerWritten = false;
       await initialize();
+    }
+  }
+
+  /// ذخیره فایل CSV فعلی در فولدر Download گوشی و بازکردن آن
+  static Future<String?> saveCsvToDownloadsAndOpen({String fileName = 'wifi_knn_auto.csv'}) async {
+    // دریافت محتوا
+    if (_csvFile == null) await initialize();
+    if (_csvFile == null) return null;
+    final csvContent = await _csvFile!.readAsString();
+
+    // درخواست دسترسی
+    if (!await Permission.storage.request().isGranted) {
+      return null;
+    }
+    try {
+      // مسیر پوشه دانلود اندروید
+      final Directory downloadsDir = Directory('/storage/emulated/0/Download');
+      if (!await downloadsDir.exists()) {
+        return null;
+      }
+      final outFile = File('${downloadsDir.path}/$fileName');
+      await outFile.writeAsString(csvContent, flush: true);
+      // بازکردن فایل با فایل‌منیجر یا اکسل
+      await OpenFile.open(outFile.path);
+      return outFile.path;
+    } catch (e) {
+      debugPrint('Error saving CSV to Downloads: $e');
+      return null;
     }
   }
 }
