@@ -1,21 +1,21 @@
-import 'dart:io';
-import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../data_model.dart';
 import '../local_database.dart';
 import '../wifi_scanner.dart';
 import '../services/fingerprint_service.dart';
 import '../services/auto_csv_service.dart';
 import '../utils/privacy_utils.dart';
+import '../config.dart';
 
 /// مدل نقطه مرجع روی نقشه
 class ReferencePoint {
   final int index; // 0 تا 24
-  final double x; // مختصات x به متر
-  final double y; // مختصات y به متر
-  final Offset pixelPosition; // موقعیت پیکسلی روی تصویر
+  final double x; // مختصات x به متر (نسبت به مبدأ)
+  final double y; // مختصات y به متر (نسبت به مبدأ)
+  final LatLng position; // موقعیت جغرافیایی
   bool isRecorded; // آیا RSSI ثبت شده است؟
   WifiScanResult? scanResult; // نتیجه اسکن Wi-Fi
 
@@ -23,7 +23,7 @@ class ReferencePoint {
     required this.index,
     required this.x,
     required this.y,
-    required this.pixelPosition,
+    required this.position,
     this.isRecorded = false,
     this.scanResult,
   });
@@ -45,24 +45,17 @@ class MapReferencePointPicker extends StatefulWidget {
 }
 
 class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
-  // تصویر نقشه
-  File? _mapImageFile;
-  XFile? _selectedImage;
-  ImageProvider? _mapImageProvider;
+  // کنترلر نقشه
+  final MapController _mapController = MapController();
   
-  // نقطه مبدأ (مرکز)
-  Offset? _originPoint;
-  double _originX = 0.0; // متر
-  double _originY = 0.0; // متر
+  // نقطه مبدأ (مرکز) - مختصات جغرافیایی
+  LatLng? _originPoint;
   
   // لیست 25 نقطه مرجع
   List<ReferencePoint> _referencePoints = [];
   
-  // ضریب مقیاس‌دهی (پیکسل به متر)
-  double _scaleFactor = 50.0; // هر 50 پیکسل = 1 متر (قابل تنظیم)
-  
-  // اندازه تصویر نقشه
-  Size? _imageSize;
+  // فاصله بین نقاط (به متر)
+  double _stepSize = 0.5; // متر
   
   // نقطه انتخاب شده برای ثبت RSSI
   ReferencePoint? _selectedPoint;
@@ -70,21 +63,18 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
   bool _isLoading = false;
   bool _isScanning = false;
   
-  // کنترلر برای تنظیم ضریب مقیاس
-  final TextEditingController _scaleController = TextEditingController(text: '50.0');
-  
-  // GlobalKey برای دسترسی به موقعیت تصویر
-  final GlobalKey _imageKey = GlobalKey();
+  // کنترلر برای تنظیم فاصله بین نقاط
+  final TextEditingController _stepSizeController = TextEditingController(text: '0.5');
 
   @override
   void initState() {
     super.initState();
-    _scaleController.addListener(() {
-      final value = double.tryParse(_scaleController.text);
-      if (value != null && value > 0) {
+    _stepSizeController.addListener(() {
+      final value = double.tryParse(_stepSizeController.text);
+      if (value != null && value > 0 && value <= 2.0) {
         setState(() {
-          _scaleFactor = value;
-          // بازسازی نقاط با ضریب جدید
+          _stepSize = value;
+          // بازسازی نقاط با فاصله جدید
           if (_originPoint != null) {
             _generateReferencePoints();
           }
@@ -95,96 +85,30 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
 
   @override
   void dispose() {
-    _scaleController.dispose();
+    _stepSizeController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
-  /// انتخاب تصویر نقشه
-  Future<void> _pickMapImage() async {
-    try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
-      );
-      
-      if (image != null) {
-        setState(() {
-          _selectedImage = image;
-          _mapImageFile = File(image.path);
-          _mapImageProvider = FileImage(_mapImageFile!);
-          _originPoint = null;
-          _referencePoints = [];
-          _selectedPoint = null;
-        });
-        
-        // دریافت اندازه تصویر
-        _loadImageSize();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در انتخاب تصویر: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  /// دریافت اندازه تصویر
-  Future<void> _loadImageSize() async {
-    if (_mapImageFile == null) return;
+  /// تبدیل متر به درجه جغرافیایی
+  /// تقریباً: 1 درجه عرض جغرافیایی ≈ 111320 متر
+  LatLng _meterToLatLng(LatLng origin, double xMeters, double yMeters) {
+    // تبدیل x (شرق-غرب) به longitude
+    final latRad = origin.latitude * math.pi / 180;
+    final lonDegrees = xMeters / (111320.0 * math.cos(latRad));
     
-    try {
-      final imageBytes = await _mapImageFile!.readAsBytes();
-      final codec = await ui.instantiateImageCodec(imageBytes);
-      final frame = await codec.getNextFrame();
-      
-      setState(() {
-        _imageSize = Size(
-          frame.image.width.toDouble(),
-          frame.image.height.toDouble(),
-        );
-      });
-      
-      // آزاد کردن منابع
-      frame.image.dispose();
-    } catch (e) {
-      debugPrint('Error loading image size: $e');
-    }
-  }
-
-  /// تبدیل پیکسل به متر
-  double _pixelToMeter(double pixels) {
-    return pixels / _scaleFactor;
-  }
-
-  /// تبدیل متر به پیکسل
-  double _meterToPixel(double meters) {
-    return meters * _scaleFactor;
-  }
-
-  /// تبدیل مختصات پیکسلی به مختصات فیزیکی (متر)
-  Offset _pixelToPhysical(Offset pixelPos) {
-    if (_imageSize == null || _originPoint == null) {
-      return Offset.zero;
-    }
+    // تبدیل y (شمال-جنوب) به latitude
+    final latDegrees = yMeters / 111320.0;
     
-    // محاسبه فاصله از نقطه مبدأ (به پیکسل)
-    final dx = pixelPos.dx - _originPoint!.dx;
-    final dy = pixelPos.dy - _originPoint!.dy;
-    
-    // تبدیل به متر
-    final xMeters = _pixelToMeter(dx);
-    final yMeters = _pixelToMeter(-dy); // معکوس کردن y (چون در تصویر y به پایین است)
-    
-    return Offset(xMeters, yMeters);
+    return LatLng(
+      origin.latitude + latDegrees,
+      origin.longitude + lonDegrees,
+    );
   }
 
   /// تولید 25 نقطه مرجع حول نقطه مبدأ
   void _generateReferencePoints() {
-    if (_originPoint == null || _imageSize == null) return;
+    if (_originPoint == null) return;
     
     final points = <ReferencePoint>[];
     
@@ -193,108 +117,49 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
       index: 0,
       x: 0.0,
       y: 0.0,
-      pixelPosition: _originPoint!,
+      position: _originPoint!,
     ));
     
     // تولید 24 نقطه دیگر در شبکه 5×5
-    // فاصله بین نقاط: 0.5 تا 1.5 متر
-    final gridSize = 5;
-    final stepSize = 0.5; // متر
-    
     int pointIndex = 1;
     for (int i = -2; i <= 2; i++) {
       for (int j = -2; j <= 2; j++) {
         // رد کردن نقطه مرکز (که قبلاً اضافه شده)
         if (i == 0 && j == 0) continue;
         
-        // محاسبه مختصات فیزیکی
-        final xMeters = i * stepSize;
-        final yMeters = j * stepSize;
+        // محاسبه مختصات فیزیکی (به متر)
+        final xMeters = i * _stepSize;
+        final yMeters = j * _stepSize;
         
-        // تبدیل به پیکسل
-        final dxPixels = _meterToPixel(xMeters);
-        final dyPixels = _meterToPixel(yMeters);
+        // تبدیل به مختصات جغرافیایی
+        final position = _meterToLatLng(_originPoint!, xMeters, yMeters);
         
-        final pixelPos = Offset(
-          _originPoint!.dx + dxPixels,
-          _originPoint!.dy - dyPixels, // معکوس کردن y
-        );
-        
-        // بررسی اینکه نقطه در محدوده تصویر باشد
-        if (pixelPos.dx >= 0 && pixelPos.dx <= _imageSize!.width &&
-            pixelPos.dy >= 0 && pixelPos.dy <= _imageSize!.height) {
-          points.add(ReferencePoint(
-            index: pointIndex++,
-            x: xMeters,
-            y: yMeters,
-            pixelPosition: pixelPos,
-          ));
-        }
+        points.add(ReferencePoint(
+          index: pointIndex++,
+          x: xMeters,
+          y: yMeters,
+          position: position,
+        ));
       }
     }
     
     setState(() {
       _referencePoints = points;
+      _selectedPoint = null;
     });
   }
 
-  /// مدیریت کلیک روی تصویر نقشه
-  void _handleImageTap(TapDownDetails details, Size imageDisplaySize) {
-    if (_mapImageFile == null || _imageSize == null) return;
-    
-    // پیدا کردن موقعیت تصویر در صفحه
-    final imageBox = _imageKey.currentContext?.findRenderObject() as RenderBox?;
-    if (imageBox == null) return;
-    
-    final localPosition = imageBox.globalToLocal(details.globalPosition);
-    
-    // تبدیل به مختصات واقعی تصویر (با در نظر گیری scale)
-    // تصویر ممکن است با fit: BoxFit.contain نمایش داده شود
-    final imageAspectRatio = _imageSize!.width / _imageSize!.height;
-    final displayAspectRatio = imageDisplaySize.width / imageDisplaySize.height;
-    
-    double scaleX, scaleY;
-    double offsetX = 0, offsetY = 0;
-    
-    if (imageAspectRatio > displayAspectRatio) {
-      // تصویر عرض بیشتری دارد - scale بر اساس عرض
-      scaleX = scaleY = _imageSize!.width / imageDisplaySize.width;
-      offsetY = (imageDisplaySize.height - _imageSize!.height / scaleX) / 2;
-    } else {
-      // تصویر ارتفاع بیشتری دارد - scale بر اساس ارتفاع
-      scaleX = scaleY = _imageSize!.height / imageDisplaySize.height;
-      offsetX = (imageDisplaySize.width - _imageSize!.width / scaleY) / 2;
-    }
-    
-    // محاسبه موقعیت کلیک در مختصات تصویر
-    final imageX = (localPosition.dx - offsetX) * scaleX;
-    final imageY = (localPosition.dy - offsetY) * scaleY;
-    
-    // بررسی اینکه آیا در محدوده تصویر هستیم
-    if (imageX < 0 || imageX > _imageSize!.width ||
-        imageY < 0 || imageY > _imageSize!.height) {
-      return;
-    }
-    
-    final tapPosition = Offset(imageX, imageY);
-    
-    // بررسی اینکه آیا روی یکی از نقاط مرجع کلیک شده
-    for (final point in _referencePoints) {
-      final distance = (tapPosition - point.pixelPosition).distance;
-      if (distance < 20) { // 20 پیکسل tolerance
-        _selectPoint(point);
-        return;
-      }
-    }
-    
-    // اگر روی نقطه مرجع کلیک نشده، نقطه مبدأ جدید تنظیم می‌شود
+  /// مدیریت کلیک روی نقشه
+  void _handleMapTap(LatLng point) {
     setState(() {
-      _originPoint = tapPosition;
-      _originX = 0.0;
-      _originY = 0.0;
+      _originPoint = point;
       _selectedPoint = null;
     });
     
+    // حرکت نقشه به نقطه انتخاب شده
+    _mapController.move(point, _mapController.camera.zoom);
+    
+    // تولید نقاط مرجع
     _generateReferencePoints();
   }
 
@@ -303,6 +168,9 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
     setState(() {
       _selectedPoint = point;
     });
+    
+    // حرکت نقشه به نقطه انتخاب شده
+    _mapController.move(point.position, _mapController.camera.zoom);
   }
 
   /// ثبت RSSI برای نقطه انتخاب شده
@@ -317,23 +185,13 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
       // انجام اسکن Wi-Fi
       final scanResult = await WifiScanner.performScan();
       
-      // ذخیره در پایگاه داده
-      // برای ذخیره، باید مختصات جغرافیایی داشته باشیم
-      // اما چون ما مختصات فیزیکی (x, y) داریم، باید آن‌ها را به عنوان zoneLabel ذخیره کنیم
-      // یا می‌توانیم یک سیستم مختصات محلی تعریف کنیم
-      
       // استفاده از مختصات فیزیکی به عنوان zoneLabel
       final zoneLabel = 'MapRef_${_selectedPoint!.index}_X${_selectedPoint!.x.toStringAsFixed(2)}_Y${_selectedPoint!.y.toStringAsFixed(2)}';
       
-      // برای latitude و longitude، از مقادیر پیش‌فرض استفاده می‌کنیم
-      // یا می‌توانیم از موقعیت GPS فعلی استفاده کنیم (اگر در دسترس باشد)
-      // در اینجا از مقادیر ثابت استفاده می‌کنیم و zoneLabel را برای شناسایی استفاده می‌کنیم
-      const baseLat = 0.0; // می‌تواند از GPS گرفته شود
-      const baseLon = 0.0; // می‌تواند از GPS گرفته شود
-      
+      // ذخیره در پایگاه داده
       await widget.fingerprintService.saveFingerprint(
-        latitude: baseLat + _selectedPoint!.x / 111320.0, // تقریباً 1 درجه = 111320 متر
-        longitude: baseLon + _selectedPoint!.y / (111320.0 * math.cos(baseLat * math.pi / 180)),
+        latitude: _selectedPoint!.position.latitude,
+        longitude: _selectedPoint!.position.longitude,
         zoneLabel: zoneLabel,
         scanResult: scanResult,
       );
@@ -341,8 +199,8 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
       // ذخیره در CSV خودکار
       await AutoCsvService.addScan(
         scanResult: scanResult,
-        latitude: baseLat + _selectedPoint!.x / 111320.0,
-        longitude: baseLon + _selectedPoint!.y / (111320.0 * math.cos(baseLat * math.pi / 180)),
+        latitude: _selectedPoint!.position.latitude,
+        longitude: _selectedPoint!.position.longitude,
         zoneLabel: zoneLabel,
       );
       
@@ -355,8 +213,9 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('RSSI برای نقطه ${_selectedPoint!.index} ثبت شد!'),
+            content: Text('RSSI برای نقطه ${_selectedPoint!.index} ثبت شد! (${scanResult.accessPoints.length} AP)'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -376,6 +235,67 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
     }
   }
 
+  /// ساخت Marker برای نقاط مرجع
+  List<Marker> _buildReferenceMarkers() {
+    return _referencePoints.map((point) {
+      Color markerColor;
+      IconData iconData;
+      double iconSize;
+      
+      if (point.index == 0) {
+        // نقطه مبدأ
+        markerColor = Colors.red;
+        iconData = Icons.center_focus_strong;
+        iconSize = 28;
+      } else if (point.isRecorded) {
+        // نقطه ثبت شده
+        markerColor = Colors.green;
+        iconData = Icons.check_circle;
+        iconSize = 24;
+      } else if (point == _selectedPoint) {
+        // نقطه انتخاب شده
+        markerColor = Colors.blue;
+        iconData = Icons.radio_button_checked;
+        iconSize = 28;
+      } else {
+        // نقطه ثبت نشده
+        markerColor = Colors.orange;
+        iconData = Icons.place;
+        iconSize = 20;
+      }
+      
+      return Marker(
+        point: point.position,
+        width: iconSize + 8,
+        height: iconSize + 8,
+        child: GestureDetector(
+          onTap: () => _selectPoint(point),
+          child: Container(
+            decoration: BoxDecoration(
+              color: markerColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              iconData,
+              color: Colors.white,
+              size: iconSize,
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -392,28 +312,39 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
             color: Colors.grey.shade100,
             child: Column(
               children: [
-                // دکمه انتخاب تصویر
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _pickMapImage,
-                    icon: const Icon(Icons.image),
-                    label: const Text('انتخاب تصویر نقشه'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade700,
-                      foregroundColor: Colors.white,
-                    ),
+                // راهنما
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'روی نقشه کلیک کنید تا نقطه مبدأ انتخاب شود. سپس 25 نقطه مرجع به صورت خودکار ایجاد می‌شود.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
-                // تنظیم ضریب مقیاس
+                // تنظیم فاصله بین نقاط
                 Row(
                   children: [
-                    const Text('ضریب مقیاس (پیکسل/متر):'),
+                    const Text('فاصله بین نقاط (متر):'),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
-                        controller: _scaleController,
+                        controller: _stepSizeController,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
@@ -466,116 +397,74 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
                     ),
                   ),
                 ],
+                if (_referencePoints.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildLegendItem(Colors.red, 'مبدأ'),
+                        _buildLegendItem(Colors.orange, 'ثبت نشده'),
+                        _buildLegendItem(Colors.blue, 'انتخاب شده'),
+                        _buildLegendItem(Colors.green, 'ثبت شده'),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          // نمایش نقشه و نقاط
+          // نمایش نقشه
           Expanded(
-            child: _mapImageFile == null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.map, size: 64, color: Colors.grey.shade400),
-                        const SizedBox(height: 16),
-                        Text(
-                          'لطفاً یک تصویر نقشه انتخاب کنید',
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                      ],
-                    ),
-                  )
-                : _buildMapWithPoints(),
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: LatLng(AppConfig.defaultLatitude, AppConfig.defaultLongitude),
+                initialZoom: AppConfig.defaultMapZoom,
+                minZoom: AppConfig.minMapZoom,
+                maxZoom: AppConfig.maxMapZoom,
+                onTap: (tapPosition, point) {
+                  _handleMapTap(point);
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.wifi_knn_locator',
+                ),
+                if (_referencePoints.isNotEmpty)
+                  MarkerLayer(markers: _buildReferenceMarkers()),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// ساخت ویجت نقشه با نقاط
-  Widget _buildMapWithPoints() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return GestureDetector(
-          onTapDown: (details) {
-            final imageDisplaySize = Size(
-              constraints.maxWidth,
-              constraints.maxHeight,
-            );
-            _handleImageTap(details, imageDisplaySize);
-          },
-          child: Stack(
-            children: [
-              // تصویر نقشه
-              Center(
-                child: _mapImageProvider != null
-                    ? Image(
-                        key: _imageKey,
-                        image: _mapImageProvider!,
-                        fit: BoxFit.contain,
-                      )
-                    : const CircularProgressIndicator(),
-              ),
-              // نمایش نقاط مرجع
-              if (_imageSize != null && _originPoint != null)
-                ..._referencePoints.map((point) {
-                  // محاسبه موقعیت نقطه روی صفحه نمایش
-                  // باید با همان منطق scale که در _handleImageTap استفاده می‌شود هماهنگ باشد
-                  final imageAspectRatio = _imageSize!.width / _imageSize!.height;
-                  final displayAspectRatio = constraints.maxWidth / constraints.maxHeight;
-                  
-                  double scaleX, scaleY;
-                  double offsetX = 0, offsetY = 0;
-                  
-                  if (imageAspectRatio > displayAspectRatio) {
-                    scaleX = scaleY = _imageSize!.width / constraints.maxWidth;
-                    offsetY = (constraints.maxHeight - _imageSize!.height / scaleX) / 2;
-                  } else {
-                    scaleX = scaleY = _imageSize!.height / constraints.maxHeight;
-                    offsetX = (constraints.maxWidth - _imageSize!.width / scaleY) / 2;
-                  }
-                  
-                  final displayX = point.pixelPosition.dx / scaleX + offsetX;
-                  final displayY = point.pixelPosition.dy / scaleY + offsetY;
-                  
-                  return Positioned(
-                    left: displayX - 8,
-                    top: displayY - 8,
-                    child: GestureDetector(
-                      onTap: () => _selectPoint(point),
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: point.index == 0
-                              ? Colors.red
-                              : point.isRecorded
-                                  ? Colors.green
-                                  : point == _selectedPoint
-                                      ? Colors.blue
-                                      : Colors.orange,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 2,
-                          ),
-                        ),
-                        child: point.index == 0
-                            ? const Icon(
-                                Icons.center_focus_strong,
-                                size: 10,
-                                color: Colors.white,
-                              )
-                            : null,
-                      ),
-                    ),
-                  );
-                }).toList(),
-            ],
+  Widget _buildLegendItem(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 1),
           ),
-        );
-      },
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11),
+        ),
+      ],
     );
   }
 }
-
