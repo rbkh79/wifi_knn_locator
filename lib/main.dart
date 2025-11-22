@@ -94,7 +94,7 @@ class _HomePageState extends State<HomePage> {
   bool _showPath = true;
   
   // Location confidence state
-  LocationConfidenceService.ConfidenceResult? _confidenceResult;
+  ConfidenceResult? _confidenceResult;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
