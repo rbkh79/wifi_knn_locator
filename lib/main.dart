@@ -1,3 +1,36 @@
+/*
+Prompt for GitHub Copilot: Update Flutter App for Indoor Wi-Fi Localization with KNN
+
+Current App Details from README_FA.md:
+- Flutter mobile app for indoor localization using Wi-Fi scans (RSSI + MAC) and KNN algorithm.
+- Features: Periodic AP scanning (BSSID, RSSI, frequency, SSID); SHA-256 MAC hashing for privacy; Offline SQLite DB for fingerprints; KNN for position estimation with confidence score; Training mode for data collection; User-friendly UI with privacy info; Unit tests.
+- Modular structure: lib/config.dart (K=3, scanInterval=5s), data_model.dart (WifiReading, FingerprintEntry, LocationEstimate), wifi_scanner.dart, local_database.dart, knn_localization.dart, main.dart, services/fingerprint_service.dart, utils/privacy_utils.dart.
+- KNN Pseudocode: Load fingerprints, calculate Euclidean distance (default -100 dBm for missing BSSID), sort distances, select K nearest, weighted average for lat/lon, confidence = 1 / (1 + avgDistance / 100).
+- DB Structure: fingerprints table (id, fingerprint_id, latitude, longitude, zone_label, created_at, device_id); access_points table (id, fingerprint_id, bssid, rssi, frequency, ssid).
+- Permissions: Android ACCESS_FINE_LOCATION, etc.; iOS NSLocationWhenInUseUsageDescription.
+
+Goal: Enhance the app to predict future position and user path based on historical Wi-Fi data (MAC/RSSI), even during Wi-Fi outages (signal cuts). Use historical data from SQLite to extrapolate paths. Add innovative features not commonly used in similar apps (up to 2025 literature).
+
+Improvement Ideas to Implement:
+1. Integrate Temporal Graph Attention Networks (TGAT) for modeling MAC relations as a temporal graph and predicting paths. Use PyTorch via flutter_torch plugin. Build graph from historical RSSI changes; predict next node (position) in knn_localization.dart.
+2. Add Uncertainty-Aware Prediction with Bayesian Neural Networks (BNN) to compute prediction uncertainty. In UI, show confidence bar; during outages, warn if uncertainty high.
+3. Implement Federated Learning for local model training (e.g., small LSTM) on user data without sharing raw data. Use Firebase backend to aggregate models; keep data local in SQLite.
+4. Add Graph-Based Extrapolation with Temporal Graph Neural Networks (TGNN) for path prediction during outages. Detect outage (RSSI=0 threshold), extrapolate from last historical path.
+5. Uncertainty-Guided Prediction with Variational Autoencoders (VAE) for handling outages: Train VAE on historical RSSI to generate probable paths; display in map UI.
+6. Offline Trajectory Forecasting with Offline Reinforcement Learning (Offline RL, e.g., CQL). Model paths as action-reward sequences; predict long-term paths offline during outages.
+
+Tasks for Copilot:
+- Generate Dart code to add these features. Start with new files/modules if needed (e.g., prediction_service.dart for ML models).
+- Integrate with existing: Update wifi_scanner.dart for outage detection; local_database.dart for historical data queries; knn_localization.dart for hybrid KNN + new models.
+- Use torch for ML (assume flutter_torch installed); add pubspec.yaml dependencies if needed.
+- Update UI in main.dart: Add path prediction display on map, outage mode switch.
+- Update README_FA.md with new features, architecture, and pseudocode.
+- Ensure privacy: Hash all data; no central sharing except federated gradients.
+- Make it novel: These combos (e.g., TGNN for Wi-Fi outage prediction) are unpublished in 2025 literature.
+
+Generate the updated code starting from here:
+*/
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -18,12 +51,9 @@ import 'services/fingerprint_validator.dart';
 import 'services/path_analysis_service.dart';
 import 'services/location_confidence_service.dart';
 import 'services/auto_csv_service.dart';
-import 'services/map_reference_point_picker.dart';
 import 'utils/privacy_utils.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
-import 'package:open_file/open_file.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -97,7 +127,7 @@ class _HomePageState extends State<HomePage> {
   bool _showPath = true;
   
   // Location confidence state
-  ConfidenceResult? _confidenceResult;
+  LocationConfidenceService.ConfidenceResult? _confidenceResult;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -1887,30 +1917,6 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MapReferencePointPicker(
-                            fingerprintService: _fingerprintService,
-                            database: _database,
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.map),
-                    label: const Text('انتخاب نقطه مرجع روی نقشه'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
                 const Divider(),
                 // Statistics
                 FutureBuilder<Map<String, dynamic>>(
@@ -2009,30 +2015,47 @@ class _HomePageState extends State<HomePage> {
   Future<void> _exportAutoCsv() async {
     try {
       setState(() => _loading = true);
+      final filePath = await AutoCsvService.getCsvFilePath();
       
-      // دانلود مستقیم به پوشه Download
-      final downloadedPath = await AutoCsvService.saveCsvToDownloadsAndOpen(
-        fileName: 'wifi_knn_auto.csv',
-      );
-      
-      if (downloadedPath == null) {
+      if (filePath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('فایل CSV خودکار وجود ندارد یا مجوز دسترسی داده نشده است.'),
+              content: Text('فایل CSV خودکار وجود ندارد یا هنوز اسکنی انجام نشده است.'),
               backgroundColor: Colors.orange,
             ),
           );
         }
         return;
       }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل CSV خودکار پیدا نشد.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // استفاده از share_plus برای اشتراک‌گذاری
+      final xFile = XFile(filePath);
+      await Share.shareXFiles(
+        [xFile],
+        subject: 'WiFi KNN Locator - Auto CSV Export',
+        text: 'فایل CSV خودکار اسکن‌های Wi-Fi',
+      );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('فایل CSV خودکار با موفقیت دانلود شد!\n$downloadedPath'),
+          const SnackBar(
+            content: Text('فایل CSV خودکار آماده دانلود است!'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -2053,29 +2076,16 @@ class _HomePageState extends State<HomePage> {
   Future<void> _exportData() async {
     try {
       setState(() => _loading = true);
-      // دانلود مستقیم فایل CSV به پوشه Download
-      final downloadedPath = await _dataExportService.downloadCsvToDownloads();
-      if (downloadedPath != null) {
-        // باز کردن فایل بعد از دانلود
-        await OpenFile.open(downloadedPath);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('فایل CSV با موفقیت دانلود شد!\n$downloadedPath'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('خطا در دانلود فایل CSV. لطفاً مجوز دسترسی را بررسی کنید.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      // دانلود و اشتراک‌گذاری فایل CSV
+      await _dataExportService.downloadAndShareCsv();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('فایل CSV آماده دانلود است! لطفاً از منوی اشتراک‌گذاری استفاده کنید.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -2295,35 +2305,5 @@ class _HomePageState extends State<HomePage> {
       return LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
     }
     return LatLng(AppConfig.defaultLatitude, AppConfig.defaultLongitude);
-  }
-
-  /// دانلود CSV خودکار و ذخیره در Download
-  Future<void> _downloadAutoCsvToDownloads() async {
-    setState(() => _loading = true);
-    try {
-      final path = await AutoCsvService.saveCsvToDownloadsAndOpen(fileName: 'wifi_knn_auto.csv');
-      if (path != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('فایل CSV در پوشه Download ذخیره و باز شد!\n$path'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
-        throw 'خطا در ذخیره فایل یا مجوز دسترسی!';
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در ذخیره یا باز کردن CSV: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      setState(() => _loading = false);
-    }
   }
 }

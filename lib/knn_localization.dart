@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'data_model.dart';
 import 'config.dart';
 import 'local_database.dart';
+import 'services/prediction_service.dart';
 import 'utils/rssi_filter.dart';
 
 /// پیاده‌سازی الگوریتم KNN برای تخمین موقعیت
@@ -31,6 +32,19 @@ class KnnLocalization {
 
     // بررسی حداقل تعداد AP
     if (scanResult.accessPoints.length < AppConfig.minApCountForEvaluation) {
+      // ممکن است یک outage (قطع سیگنال) باشد؛ سعی می‌کنیم از PredictionService استفاده کنیم
+      try {
+        final deviceId = scanResult.deviceId ?? '';
+        final predictionService = PredictionService(_database);
+        final preds = await predictionService.predictDuringOutage(deviceId: deviceId, steps: 1);
+        if (preds.isNotEmpty) {
+          // بازگرداندن اولین پیش‌بینی با نشانه‌ای از پیش‌بینی (confidence ممکن است پایین باشد)
+          return preds.first;
+        }
+      } catch (e) {
+        // اگر پیش‌بینی شکست خورد، به رفتار قبلی برمی‌گردیم (null)
+      }
+
       return null;
     }
 
