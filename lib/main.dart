@@ -53,7 +53,6 @@ import 'services/location_confidence_service.dart';
 import 'services/auto_csv_service.dart';
 import 'services/map_reference_point_picker.dart';
 import 'utils/privacy_utils.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
 
@@ -2391,20 +2390,25 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      // استفاده از share_plus برای اشتراک‌گذاری
-      final xFile = XFile(filePath);
-      await Share.shareXFiles(
-        [xFile],
-        subject: 'WiFi KNN Locator - Auto CSV Export',
-        text: 'فایل CSV خودکار اسکن‌های Wi-Fi',
-      );
+      final savedPath = await AutoCsvService.saveCsvToDownloadsAndOpen();
+      if (savedPath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('ذخیره فایل در پوشه Downloads با مشکل مواجه شد.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فایل CSV خودکار آماده دانلود است!'),
+          SnackBar(
+            content: Text('فایل CSV در پوشه Downloads ذخیره شد.\n$savedPath'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

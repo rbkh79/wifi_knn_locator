@@ -6,6 +6,7 @@ import '../data_model.dart';
 import '../wifi_scanner.dart';
 import '../services/fingerprint_service.dart';
 import '../services/auto_csv_service.dart';
+import '../services/location_service.dart';
 import '../config.dart';
 
 /// مدل نقطه مرجع روی نقشه
@@ -62,6 +63,7 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
   
   bool _isLoading = false;
   bool _isScanning = false;
+  bool _isLocating = false;
   
   // کنترلر برای تنظیم فاصله بین نقاط
   final TextEditingController _stepSizeController = TextEditingController(text: '0.5');
@@ -161,6 +163,63 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
     
     // تولید نقاط مرجع
     _generateReferencePoints();
+  }
+
+  /// استفاده از موقعیت فعلی دستگاه به عنوان مبدأ
+  Future<void> _useCurrentLocationAsOrigin() async {
+    if (_isLocating) return;
+    setState(() {
+      _isLocating = true;
+      _selectedPoint = null;
+    });
+
+    try {
+      final position = await LocationService.getCurrentPosition();
+      if (position == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('دسترسی به موقعیت امکان‌پذیر نیست. لطفاً GPS و مجوزها را بررسی کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final newOrigin = LatLng(position.latitude, position.longitude);
+      setState(() {
+        _originPoint = newOrigin;
+      });
+
+      _mapController.move(newOrigin, math.max(_mapController.camera.zoom, 18));
+      _generateReferencePoints();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('موقعیت فعلی به عنوان نقطه مبدأ تنظیم شد.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دریافت موقعیت: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLocating = false;
+        });
+      }
+    }
   }
 
   /// انتخاب یک نقطه برای ثبت RSSI
@@ -370,6 +429,27 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isLocating ? null : _useCurrentLocationAsOrigin,
+                    icon: _isLocating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location),
+                    label: Text(_isLocating
+                        ? 'در حال دریافت موقعیت...'
+                        : 'استفاده از موقعیت فعلی به عنوان مبدأ'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
