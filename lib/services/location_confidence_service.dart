@@ -4,29 +4,29 @@ import '../local_database.dart';
 import 'package:geolocator/geolocator.dart';
 import '../utils/privacy_utils.dart';
 
+/// نتیجه بررسی اطمینان موقعیت
+class ConfidenceResult {
+  final bool isReliable;
+  final bool isNewLocation;
+  final double confidenceScore;
+  final String? warningMessage;
+  final double? gpsKnnDistance; // فاصله بین GPS و KNN (به متر)
+
+  const ConfidenceResult({
+    required this.isReliable,
+    required this.isNewLocation,
+    required this.confidenceScore,
+    this.warningMessage,
+    this.gpsKnnDistance,
+  });
+}
+
 /// سرویس تشخیص اطمینان و مکان جدید
 /// این سرویس بررسی می‌کند که آیا تخمین KNN قابل اعتماد است یا نه
 class LocationConfidenceService {
   final LocalDatabase _database;
 
   LocationConfidenceService(this._database);
-
-  /// نتیجه بررسی اطمینان موقعیت
-  class ConfidenceResult {
-    final bool isReliable;
-    final bool isNewLocation;
-    final double confidenceScore;
-    final String? warningMessage;
-    final double? gpsKnnDistance; // فاصله بین GPS و KNN (به متر)
-
-    ConfidenceResult({
-      required this.isReliable,
-      required this.isNewLocation,
-      required this.confidenceScore,
-      this.warningMessage,
-      this.gpsKnnDistance,
-    });
-  }
 
   /// بررسی اطمینان تخمین KNN
   /// 
