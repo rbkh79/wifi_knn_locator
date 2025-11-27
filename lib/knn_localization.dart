@@ -65,8 +65,12 @@ class KnnLocalization {
     // مرتب‌سازی بر اساس فاصله
     distances.sort((a, b) => a.distance.compareTo(b.distance));
 
-    // انتخاب k همسایه نزدیک
-    final kNearest = k < distances.length ? k : distances.length;
+    // انتخاب k همسایه نزدیک (با Adaptive K)
+    int effectiveK = k;
+    if (AppConfig.enableAdaptiveK) {
+      effectiveK = _resolveAdaptiveK(distances, k);
+    }
+    final kNearest = effectiveK < distances.length ? effectiveK : distances.length;
     if (kNearest == 0) {
       return null;
     }
@@ -249,6 +253,38 @@ class KnnLocalization {
     }
 
     return distanceSquared;
+  }
+
+  int _resolveAdaptiveK(List<DistanceRecord> distances, int baseK) {
+    final safeBase = baseK.clamp(AppConfig.minK, AppConfig.maxK);
+    if (!AppConfig.enableAdaptiveK || distances.isEmpty) {
+      return safeBase;
+    }
+
+    final seed = distances.take(safeBase).toList();
+    if (seed.isEmpty) {
+      return safeBase;
+    }
+
+    final centerLat = seed.fold<double>(0, (sum, d) => sum + d.fingerprint.latitude) / seed.length;
+    final centerLon = seed.fold<double>(0, (sum, d) => sum + d.fingerprint.longitude) / seed.length;
+    final radiusDeg = AppConfig.adaptiveRadiusMeters / 111320.0;
+
+    int densityCount = 0;
+    for (final record in distances) {
+      final latDiff = (record.fingerprint.latitude - centerLat).abs();
+      final lonDiff = (record.fingerprint.longitude - centerLon).abs();
+      if (latDiff <= radiusDeg && lonDiff <= radiusDeg) {
+        densityCount++;
+      }
+    }
+
+    if (densityCount == 0) {
+      return safeBase;
+    }
+
+    final adaptiveK = (densityCount / AppConfig.adaptiveNeighborsPerK).round();
+    return adaptiveK.clamp(AppConfig.minK, AppConfig.maxK);
   }
 }
 

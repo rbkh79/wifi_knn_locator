@@ -54,6 +54,8 @@ class DataExportService {
       'Type',
       'ID',
       'Device ID',
+      'Session ID',
+      'Context',
       'Timestamp',
       'Date',
       'Time',
@@ -108,6 +110,8 @@ class DataExportService {
           'Fingerprint',
           fp.fingerprintId,
           deviceId,
+          fp.sessionId ?? '',
+          fp.contextId ?? '',
           timestamp.toIso8601String(),
           '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}',
           '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}',
@@ -140,6 +144,8 @@ class DataExportService {
           'WiFi Scan',
           scan.id.toString(),
           deviceId,
+          '', // Session
+          '', // Context
           timestamp.toIso8601String(),
           '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}',
           '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}',
@@ -196,6 +202,8 @@ class DataExportService {
           'Location History',
           loc.id.toString(),
           deviceId,
+          '', // Session
+          '', // Context
           timestamp.toIso8601String(),
           '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}',
           '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}',

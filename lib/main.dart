@@ -51,8 +51,10 @@ import 'services/fingerprint_validator.dart';
 import 'services/path_analysis_service.dart';
 import 'services/location_confidence_service.dart';
 import 'services/auto_csv_service.dart';
+import 'services/map_reference_point_picker.dart';
 import 'utils/privacy_utils.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:io';
 
 void main() async {
@@ -134,6 +136,16 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _lonController = TextEditingController();
   final TextEditingController _zoneController = TextEditingController();
   final MapController _mapController = MapController();
+  final TextEditingController _contextController = TextEditingController();
+
+  // Session & context state
+  final Uuid _uuid = const Uuid();
+  String? _currentSessionId;
+  String? _selectedTrajectorySessionId;
+  List<TrainingSession> _recentSessions = [];
+  List<FingerprintEntry> _selectedSessionTrajectory = [];
+  List<String> _availableContexts = ['Default'];
+  String? _currentContext = 'Default';
 
   @override
   void initState() {
@@ -166,6 +178,7 @@ class _HomePageState extends State<HomePage> {
     
     // بارگذاری مسیر کاربر
     await _loadUserPath();
+    await _loadContextAndSessions();
     
     setState(() {});
   }
@@ -183,6 +196,20 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       debugPrint('Error loading user path: $e');
+    }
+  }
+
+  Future<void> _loadTrajectoryForSession(String sessionId) async {
+    try {
+      final entries = await _database.getFingerprintsBySession(sessionId);
+      if (mounted) {
+        setState(() {
+          _selectedTrajectorySessionId = sessionId;
+          _selectedSessionTrajectory = entries;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading trajectory for session $sessionId: $e');
     }
   }
 
@@ -205,6 +232,67 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }
+  }
+
+  Future<void> _loadContextAndSessions() async {
+    final contexts = await _database.getAvailableContexts();
+    final sessions = await _database.getTrainingSessions(limit: 20);
+    if (mounted) {
+      setState(() {
+        if (contexts.isNotEmpty) {
+          _availableContexts = contexts;
+          _currentContext ??= contexts.first;
+        }
+        _recentSessions = sessions;
+      });
+    }
+
+    if (_currentSessionId == null) {
+      if (sessions.isNotEmpty) {
+        _currentSessionId = sessions.first.sessionId;
+        await _loadTrajectoryForSession(_currentSessionId!);
+      } else {
+        await _startNewSession();
+      }
+    }
+  }
+
+  Future<void> _startNewSession({String? contextId}) async {
+    final newSessionId = 'session_${_uuid.v4()}';
+    final session = TrainingSession(
+      sessionId: newSessionId,
+      contextId: contextId ?? _currentContext,
+      startedAt: DateTime.now(),
+    );
+    await _database.upsertTrainingSession(session);
+    if (mounted) {
+      setState(() {
+        _currentSessionId = newSessionId;
+        _recentSessions = [session, ..._recentSessions];
+      });
+    }
+    await _loadTrajectoryForSession(newSessionId);
+  }
+
+  Future<void> _finishCurrentSession() async {
+    if (_currentSessionId == null) return;
+    await _database.finishTrainingSession(_currentSessionId!);
+    await _loadContextAndSessions();
+  }
+
+  Future<void> _setContext(String contextId) async {
+    setState(() {
+      _currentContext = contextId;
+    });
+    // به صورت خودکار جلسه جدید با زمینه جدید شروع می‌شود
+    await _startNewSession(contextId: contextId);
+  }
+
+  Future<bool> _ensureTrainingSession() async {
+    if (_currentSessionId == null) {
+      await _startNewSession();
+    }
+    return _currentSessionId != null;
   }
 
   Future<void> _getDeviceLocation() async {
@@ -269,6 +357,7 @@ class _HomePageState extends State<HomePage> {
 
       // ثبت تاریخچه اسکن
       await _dataLogger.logWifiScan(scanResult);
+      await _storeRawScan(scanResult);
 
       setState(() {
         _currentScanResult = scanResult;
@@ -457,6 +546,21 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _storeRawScan(WifiScanResult scanResult) async {
+    try {
+      final rawScan = RawWifiScan(
+        deviceId: scanResult.deviceId,
+        timestamp: scanResult.timestamp,
+        readings: scanResult.accessPoints,
+        sessionId: _currentSessionId,
+        contextId: _currentContext,
+      );
+      await _database.insertRawWifiScan(rawScan);
+    } catch (e) {
+      debugPrint('Error storing raw scan: $e');
+    }
+  }
+
   /// مدیریت کلیک روی نقشه برای اضافه کردن نقطه مرجع
   Future<void> _handleMapTap(LatLng point) async {
     // نمایش Dialog برای وارد کردن لیبل ناحیه
@@ -482,6 +586,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
+      await _ensureTrainingSession();
       // انجام اسکن Wi-Fi
       final scanResult = await WifiScanner.performScan();
       await _dataLogger.logWifiScan(scanResult);
@@ -533,6 +638,8 @@ class _HomePageState extends State<HomePage> {
         longitude: point.longitude,
         zoneLabel: zoneLabel.isEmpty ? null : zoneLabel,
         scanResult: validatedScanResult,
+        sessionId: _currentSessionId,
+        contextId: _currentContext,
       );
 
       // به‌روزرسانی لیست نقاط مرجع
@@ -702,11 +809,14 @@ class _HomePageState extends State<HomePage> {
         accessPoints: validatedAps,
       );
 
+      await _ensureTrainingSession();
       await _fingerprintService.saveFingerprint(
         latitude: lat,
         longitude: lon,
         zoneLabel: _zoneController.text.isEmpty ? null : _zoneController.text,
         scanResult: validatedScanResult,
+        sessionId: _currentSessionId,
+        contextId: _currentContext,
       );
 
       // پاک کردن فیلدها
@@ -751,6 +861,7 @@ class _HomePageState extends State<HomePage> {
     _latController.dispose();
     _lonController.dispose();
     _zoneController.dispose();
+    _contextController.dispose();
     super.dispose();
   }
 
@@ -803,6 +914,10 @@ class _HomePageState extends State<HomePage> {
             
             // بخش نتایج سیگنال‌ها
             _buildSignalResultsSection(),
+            const SizedBox(height: 16),
+
+            // بخش دیباگ
+            _buildDebugPanel(),
             const SizedBox(height: 16),
             
             // بخش تنظیمات
@@ -1000,6 +1115,44 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
+                if (_recentSessions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedTrajectorySessionId ?? _currentSessionId,
+                          decoration: const InputDecoration(
+                            labelText: 'نمایش مسیر جلسه',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _recentSessions
+                              .map(
+                                (session) => DropdownMenuItem(
+                                  value: session.sessionId,
+                                  child: Text(
+                                    '${session.contextId ?? 'بدون زمینه'} - ${session.startedAt.toLocal().toString().substring(0, 16)}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              _loadTrajectoryForSession(value);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'بارگذاری مجدد جلسات',
+                        onPressed: _loadContextAndSessions,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -1042,6 +1195,20 @@ class _HomePageState extends State<HomePage> {
                           color: Colors.purple,
                           borderStrokeWidth: 1.0,
                           borderColor: Colors.purple.shade300,
+                        ),
+                      ],
+                    ),
+                  if (_selectedSessionTrajectory.length > 1)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _selectedSessionTrajectory
+                              .map((entry) => LatLng(entry.latitude, entry.longitude))
+                              .toList(),
+                          strokeWidth: 3.0,
+                          color: Colors.orange.shade700,
+                          borderStrokeWidth: 1.0,
+                          borderColor: Colors.orange.shade200,
                         ),
                       ],
                     ),
@@ -1335,6 +1502,7 @@ class _HomePageState extends State<HomePage> {
                       _isTrainingMode = value;
                       if (value) {
                         _expandedWifiScan = true;
+                        _ensureTrainingSession();
                       }
                     });
                   },
@@ -1342,6 +1510,86 @@ class _HomePageState extends State<HomePage> {
                 // فرم آموزش
                 if (_isTrainingMode) ...[
                   const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      border: Border.all(color: Colors.orange.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'زمینه (Context) و جلسه مسیر',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _currentContext,
+                          decoration: const InputDecoration(
+                            labelText: 'انتخاب زمینه',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _availableContexts
+                              .map(
+                                (ctx) => DropdownMenuItem(
+                                  value: ctx,
+                                  child: Text(ctx),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              _setContext(value);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _contextController,
+                          decoration: InputDecoration(
+                            labelText: 'افزودن زمینه جدید',
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () {
+                                final value = _contextController.text.trim();
+                                if (value.isEmpty) return;
+                                setState(() {
+                                  if (!_availableContexts.contains(value)) {
+                                    _availableContexts = [value, ..._availableContexts];
+                                  }
+                                  _currentContext = value;
+                                });
+                                _contextController.clear();
+                                _startNewSession(contextId: value);
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _currentSessionId != null
+                                    ? 'جلسه فعال: ${_currentSessionId!.substring(0, 8)}...'
+                                    : 'هیچ جلسه فعالی وجود ندارد',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () => _startNewSession(),
+                              icon: const Icon(Icons.fiber_new),
+                              label: const Text('جلسه جدید'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _latController,
                     decoration: const InputDecoration(
@@ -1654,6 +1902,82 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  int _calculateApOverlap(FingerprintEntry fingerprint) {
+    if (_currentScanResult == null) return 0;
+    final currentSet = _currentScanResult!.accessPoints.map((ap) => ap.bssid).toSet();
+    final fpSet = fingerprint.accessPoints.map((ap) => ap.bssid).toSet();
+    return currentSet.intersection(fpSet).length;
+  }
+
+  Widget _buildDebugPanel() {
+    if (_locationEstimate == null || _currentScanResult == null) {
+      return const SizedBox.shrink();
+    }
+
+    final neighbors = _locationEstimate!.nearestNeighbors;
+    if (neighbors.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: Icon(Icons.bug_report, color: Colors.red.shade700),
+        initiallyExpanded: false,
+        title: const Text(
+          'دیباگ KNN و همپوشانی AP',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'میانگین فاصله: ${_locationEstimate!.averageDistance.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: neighbors.length,
+                  itemBuilder: (context, index) {
+                    final neighbor = neighbors[index];
+                    final overlap = _calculateApOverlap(neighbor);
+                    final avgRssi = neighbor.accessPoints.isNotEmpty
+                        ? (neighbor.accessPoints
+                                .map((ap) => ap.rssi)
+                                .reduce((a, b) => a + b) /
+                            neighbor.accessPoints.length)
+                        : 0.0;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue.shade100,
+                        child: Text('${index + 1}'),
+                      ),
+                      title: Text(neighbor.zoneLabel ?? neighbor.fingerprintId),
+                      subtitle: Text(
+                        'همپوشانی AP: $overlap | میانگین RSSI: ${avgRssi.toStringAsFixed(1)} dBm | زمان: ${neighbor.createdAt.toLocal().toString().substring(11, 19)}',
+                      ),
+                      trailing: Text(
+                        '${_calculateApOverlap(neighbor)} AP',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAccessPointItem(WifiReading ap) {
     final signalStrength = _getSignalStrength(ap.rssi);
     final signalColor = _getSignalColor(ap.rssi);
@@ -1912,6 +2236,31 @@ class _HomePageState extends State<HomePage> {
                     label: const Text('Export تمام داده‌ها (JSON)'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.purple.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MapReferencePointPicker(
+                            fingerprintService: _fingerprintService,
+                            sessionId: _currentSessionId,
+                            contextId: _currentContext,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.map),
+                    label: const Text('انتخاب نقطه مرجع روی نقشه'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),

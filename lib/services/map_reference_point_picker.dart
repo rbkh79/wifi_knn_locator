@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data_model.dart';
-import '../local_database.dart';
 import '../wifi_scanner.dart';
 import '../services/fingerprint_service.dart';
 import '../services/auto_csv_service.dart';
-import '../utils/privacy_utils.dart';
 import '../config.dart';
 
 /// مدل نقطه مرجع روی نقشه
@@ -32,12 +30,14 @@ class ReferencePoint {
 /// صفحه انتخاب نقطه مبدأ و تولید 25 نقطه مرجع
 class MapReferencePointPicker extends StatefulWidget {
   final FingerprintService fingerprintService;
-  final LocalDatabase database;
+  final String? sessionId;
+  final String? contextId;
 
   const MapReferencePointPicker({
     Key? key,
     required this.fingerprintService,
-    required this.database,
+    this.sessionId,
+    this.contextId,
   }) : super(key: key);
 
   @override
@@ -176,6 +176,17 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
   /// ثبت RSSI برای نقطه انتخاب شده
   Future<void> _recordRssiForPoint() async {
     if (_selectedPoint == null) return;
+    if (widget.sessionId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('برای ثبت RSSI، ابتدا جلسه آموزش را در صفحه اصلی شروع کنید.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
     
     setState(() {
       _isScanning = true;
@@ -194,6 +205,8 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
         longitude: _selectedPoint!.position.longitude,
         zoneLabel: zoneLabel,
         scanResult: scanResult,
+        sessionId: widget.sessionId,
+        contextId: widget.contextId,
       );
       
       // ذخیره در CSV خودکار
@@ -312,6 +325,29 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
             color: Colors.grey.shade100,
             child: Column(
               children: [
+                if (widget.sessionId == null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.red.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'هیچ جلسه فعالی از صفحه اصلی انتخاب نشده است. لطفاً به صفحه اصلی بازگردید و جلسه جدید بسازید.',
+                            style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 // راهنما
                 Container(
                   padding: const EdgeInsets.all(12),

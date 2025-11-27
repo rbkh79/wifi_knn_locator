@@ -9,10 +9,13 @@ class AppConfig {
   static const int defaultK = 3;
   static const int minK = 1;
   static const int maxK = 10;
+  static const bool enableAdaptiveK = true;
+  static const double adaptiveRadiusMeters = 4.0;
+  static const int adaptiveNeighborsPerK = 4;
 
   // پارامترهای پایگاه داده
   static const String databaseName = 'wifi_fingerprints.db';
-  static const int databaseVersion = 2;
+  static const int databaseVersion = 3;
 
   // پارامترهای حریم خصوصی
   static const bool hashDeviceMac = true;

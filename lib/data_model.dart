@@ -76,6 +76,8 @@ class FingerprintEntry {
   final double latitude;
   final double longitude;
   final String? zoneLabel; // لیبل ناحیه (اختیاری)
+  final String? sessionId; // شناسه مسیر/جلسه
+  final String? contextId; // شناسه محیط (مثلاً دانشگاه)
   final List<WifiReading> accessPoints;
   final DateTime createdAt;
   final String? deviceId; // شناسه دستگاه که این اثرانگشت را ثبت کرده
@@ -86,6 +88,8 @@ class FingerprintEntry {
     required this.latitude,
     required this.longitude,
     this.zoneLabel,
+    this.sessionId,
+    this.contextId,
     required this.accessPoints,
     required this.createdAt,
     this.deviceId,
@@ -98,6 +102,8 @@ class FingerprintEntry {
       'latitude': latitude,
       'longitude': longitude,
       'zone_label': zoneLabel,
+      'session_id': sessionId,
+      'context_id': contextId,
       'access_points': accessPoints.map((ap) => ap.toMap()).toList(),
       'created_at': createdAt.toIso8601String(),
       'device_id': deviceId,
@@ -111,6 +117,8 @@ class FingerprintEntry {
       latitude: map['latitude'] as double,
       longitude: map['longitude'] as double,
       zoneLabel: map['zone_label'] as String?,
+      sessionId: map['session_id'] as String?,
+      contextId: map['context_id'] as String?,
       accessPoints: (map['access_points'] as List)
           .map((ap) => WifiReading.fromMap(ap as Map<String, dynamic>))
           .toList(),
@@ -130,6 +138,21 @@ class FingerprintEntry {
     }
     return map;
   }
+}
+
+/// اطلاعات یک جلسه/مسیر آموزش
+class TrainingSession {
+  final String sessionId;
+  final String? contextId;
+  final DateTime startedAt;
+  final DateTime? finishedAt;
+
+  TrainingSession({
+    required this.sessionId,
+    this.contextId,
+    required this.startedAt,
+    this.finishedAt,
+  });
 }
 
 /// تخمین موقعیت (Location Estimate)
@@ -155,6 +178,25 @@ class LocationEstimate {
   @override
   String toString() =>
       'LocationEstimate(lat: $latitude, lon: $longitude, confidence: ${confidence.toStringAsFixed(2)})';
+}
+
+/// لاگ خام اسکن Wi-Fi (بدون وابستگی به موقعیت)
+class RawWifiScan {
+  final int? id;
+  final String deviceId;
+  final DateTime timestamp;
+  final String? sessionId;
+  final String? contextId;
+  final List<WifiReading> readings;
+
+  RawWifiScan({
+    this.id,
+    required this.deviceId,
+    required this.timestamp,
+    required this.readings,
+    this.sessionId,
+    this.contextId,
+  });
 }
 
 /// رکورد فاصله برای KNN

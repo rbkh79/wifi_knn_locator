@@ -74,6 +74,9 @@ class AutoCsvService {
     bool? isReliable,
     bool? isNewLocation,
     double? gpsKnnDistance,
+    double? referenceLatitude,
+    double? referenceLongitude,
+    String? referenceZone,
   }) async {
     if (_csvFile == null) {
       await initialize();
@@ -97,8 +100,8 @@ class AutoCsvService {
           date,
           time,
           deviceId,
-          gpsPosition?.latitude ?? '',
-          gpsPosition?.longitude ?? '',
+          gpsPosition?.latitude ?? referenceLatitude ?? '',
+          gpsPosition?.longitude ?? referenceLongitude ?? '',
           gpsPosition?.accuracy ?? '',
           knnEstimate?.latitude ?? '',
           knnEstimate?.longitude ?? '',
@@ -109,7 +112,7 @@ class AutoCsvService {
           '', // BSSID
           '', // RSSI
           '', // Frequency
-          '', // SSID
+          referenceZone ?? '', // SSID column reused برای نام ناحیه
         ];
 
         final csvString = const ListToCsvConverter().convert([row]);
@@ -124,8 +127,8 @@ class AutoCsvService {
           date,
           time,
           deviceId,
-          gpsPosition?.latitude ?? '',
-          gpsPosition?.longitude ?? '',
+          gpsPosition?.latitude ?? referenceLatitude ?? '',
+          gpsPosition?.longitude ?? referenceLongitude ?? '',
           gpsPosition?.accuracy ?? '',
           knnEstimate?.latitude ?? '',
           knnEstimate?.longitude ?? '',
@@ -136,7 +139,7 @@ class AutoCsvService {
           ap.bssid,
           ap.rssi,
           ap.frequency ?? '',
-          ap.ssid ?? '',
+          referenceZone ?? ap.ssid ?? '',
         ];
 
         final csvString = const ListToCsvConverter().convert([row]);
@@ -208,6 +211,9 @@ class AutoCsvService {
       isReliable: null,
       isNewLocation: null,
       gpsKnnDistance: null,
+      referenceLatitude: latitude,
+      referenceLongitude: longitude,
+      referenceZone: zoneLabel,
     );
   }
 

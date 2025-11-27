@@ -41,6 +41,8 @@ class LocalDatabase {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         zone_label TEXT,
+        session_id TEXT,
+        context_id TEXT,
         created_at TEXT NOT NULL,
         device_id TEXT
       )
@@ -63,6 +65,16 @@ class LocalDatabase {
     await db.execute('CREATE INDEX idx_fingerprint_id ON fingerprints(fingerprint_id)');
     await db.execute('CREATE INDEX idx_ap_fingerprint_id ON access_points(fingerprint_id)');
     await db.execute('CREATE INDEX idx_ap_bssid ON access_points(bssid)');
+
+    // جدول جلسات/مسیرها
+    await db.execute('''
+      CREATE TABLE training_sessions (
+        session_id TEXT PRIMARY KEY,
+        context_id TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT
+      )
+    ''');
 
     // جدول اسکن‌های Wi-Fi
     await db.execute('''
@@ -103,6 +115,32 @@ class LocalDatabase {
 
     await db.execute('CREATE INDEX idx_location_device ON location_history(device_id)');
     await db.execute('CREATE INDEX idx_location_timestamp ON location_history(timestamp)');
+
+    // جدول اسکن‌های خام (بدون موقعیت)
+    await db.execute('''
+      CREATE TABLE raw_scans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        session_id TEXT,
+        context_id TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE raw_scan_readings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        raw_scan_id INTEGER NOT NULL,
+        bssid TEXT NOT NULL,
+        rssi INTEGER NOT NULL,
+        frequency INTEGER,
+        ssid TEXT,
+        FOREIGN KEY (raw_scan_id) REFERENCES raw_scans(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_raw_scan_timestamp ON raw_scans(timestamp)');
+    await db.execute('CREATE INDEX idx_raw_scan_device ON raw_scans(device_id)');
   }
 
   /// به‌روزرسانی پایگاه داده (در صورت تغییر نسخه)
@@ -110,7 +148,9 @@ class LocalDatabase {
     if (oldVersion < 2) {
       await _onCreateV2(db);
     }
-
+    if (oldVersion < 3) {
+      await _onUpgradeV3(db);
+    }
     debugPrint('Database upgrade from $oldVersion to $newVersion');
   }
 
@@ -148,6 +188,48 @@ class LocalDatabase {
     ''');
   }
 
+  Future<void> _onUpgradeV3(Database db) async {
+    // افزودن ستون‌های جدید به جدول اثرانگشت‌ها
+    await db.execute('ALTER TABLE fingerprints ADD COLUMN session_id TEXT');
+    await db.execute('ALTER TABLE fingerprints ADD COLUMN context_id TEXT');
+
+    // ایجاد جدول جلسات اگر وجود ندارد
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS training_sessions (
+        session_id TEXT PRIMARY KEY,
+        context_id TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT
+      )
+    ''');
+
+    // ایجاد جدول raw scans
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS raw_scans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        session_id TEXT,
+        context_id TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS raw_scan_readings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        raw_scan_id INTEGER NOT NULL,
+        bssid TEXT NOT NULL,
+        rssi INTEGER NOT NULL,
+        frequency INTEGER,
+        ssid TEXT,
+        FOREIGN KEY (raw_scan_id) REFERENCES raw_scans(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_raw_scan_timestamp ON raw_scans(timestamp)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_raw_scan_device ON raw_scans(device_id)');
+  }
+
   /// افزودن اثرانگشت جدید
   Future<int> insertFingerprint(FingerprintEntry fingerprint) async {
     final db = await database;
@@ -163,6 +245,8 @@ class LocalDatabase {
             'latitude': fingerprint.latitude,
             'longitude': fingerprint.longitude,
             'zone_label': fingerprint.zoneLabel,
+            'session_id': fingerprint.sessionId,
+            'context_id': fingerprint.contextId,
             'created_at': fingerprint.createdAt.toIso8601String(),
             'device_id': fingerprint.deviceId,
           },
@@ -226,6 +310,8 @@ class LocalDatabase {
         latitude: fpMap['latitude'] as double,
         longitude: fpMap['longitude'] as double,
         zoneLabel: fpMap['zone_label'] as String?,
+        sessionId: fpMap['session_id'] as String?,
+        contextId: fpMap['context_id'] as String?,
         accessPoints: accessPoints,
         createdAt: DateTime.parse(fpMap['created_at'] as String),
         deviceId: fpMap['device_id'] as String?,
@@ -272,6 +358,8 @@ class LocalDatabase {
       latitude: fpMap['latitude'] as double,
       longitude: fpMap['longitude'] as double,
       zoneLabel: fpMap['zone_label'] as String?,
+      sessionId: fpMap['session_id'] as String?,
+      contextId: fpMap['context_id'] as String?,
       accessPoints: accessPoints,
       createdAt: DateTime.parse(fpMap['created_at'] as String),
       deviceId: fpMap['device_id'] as String?,
@@ -305,6 +393,9 @@ class LocalDatabase {
     await db.delete('wifi_scan_readings');
     await db.delete('wifi_scans');
     await db.delete('location_history');
+    await db.delete('raw_scan_readings');
+    await db.delete('raw_scans');
+    await db.delete('training_sessions');
     debugPrint('All fingerprints cleared');
   }
 
@@ -506,6 +597,205 @@ class LocalDatabase {
           ),
         )
         .toList();
+  }
+
+  // --- جلسات و زمینه‌ها ---
+  Future<void> upsertTrainingSession(TrainingSession session) async {
+    final db = await database;
+    await db.insert(
+      'training_sessions',
+      {
+        'session_id': session.sessionId,
+        'context_id': session.contextId,
+        'started_at': session.startedAt.toIso8601String(),
+        'finished_at': session.finishedAt?.toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> finishTrainingSession(String sessionId) async {
+    final db = await database;
+    await db.update(
+      'training_sessions',
+      {
+        'finished_at': DateTime.now().toIso8601String(),
+      },
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  Future<List<TrainingSession>> getTrainingSessions({int limit = 20}) async {
+    final db = await database;
+    final rows = await db.query(
+      'training_sessions',
+      orderBy: 'started_at DESC',
+      limit: limit,
+    );
+
+    return rows
+        .map(
+          (row) => TrainingSession(
+            sessionId: row['session_id'] as String,
+            contextId: row['context_id'] as String?,
+            startedAt: DateTime.parse(row['started_at'] as String),
+            finishedAt: row['finished_at'] != null
+                ? DateTime.tryParse(row['finished_at'] as String)
+                : null,
+          ),
+        )
+        .toList();
+  }
+
+  Future<List<String>> getAvailableContexts() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      'SELECT DISTINCT context_id FROM fingerprints WHERE context_id IS NOT NULL AND context_id != ""',
+    );
+    final contextFromSessions = await db.rawQuery(
+      'SELECT DISTINCT context_id FROM training_sessions WHERE context_id IS NOT NULL AND context_id != ""',
+    );
+
+    final contexts = <String>{};
+    for (final row in rows) {
+      contexts.add(row['context_id'] as String);
+    }
+    for (final row in contextFromSessions) {
+      contexts.add(row['context_id'] as String);
+    }
+    return contexts.toList();
+  }
+
+  Future<List<FingerprintEntry>> getFingerprintsBySession(String sessionId) async {
+    final db = await database;
+    final rows = await db.query(
+      'fingerprints',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'created_at ASC',
+    );
+
+    final entries = <FingerprintEntry>[];
+    for (final row in rows) {
+      final fingerprintId = row['fingerprint_id'] as String;
+      final apMaps = await db.query(
+        'access_points',
+        where: 'fingerprint_id = ?',
+        whereArgs: [fingerprintId],
+      );
+      final accessPoints = apMaps
+          .map(
+            (apMap) => WifiReading(
+              bssid: apMap['bssid'] as String,
+              rssi: apMap['rssi'] as int,
+              frequency: apMap['frequency'] as int?,
+              ssid: apMap['ssid'] as String?,
+            ),
+          )
+          .toList();
+
+      entries.add(
+        FingerprintEntry(
+          id: row['id'] as int?,
+          fingerprintId: fingerprintId,
+          latitude: row['latitude'] as double,
+          longitude: row['longitude'] as double,
+          zoneLabel: row['zone_label'] as String?,
+          sessionId: row['session_id'] as String?,
+          contextId: row['context_id'] as String?,
+          accessPoints: accessPoints,
+          createdAt: DateTime.parse(row['created_at'] as String),
+          deviceId: row['device_id'] as String?,
+        ),
+      );
+    }
+    return entries;
+  }
+
+  // --- ذخیره اسکن‌های خام ---
+  Future<int> insertRawWifiScan(RawWifiScan scan) async {
+    final db = await database;
+    return await db.transaction<int>((txn) async {
+      final rawScanId = await txn.insert('raw_scans', {
+        'device_id': scan.deviceId,
+        'timestamp': scan.timestamp.toIso8601String(),
+        'session_id': scan.sessionId,
+        'context_id': scan.contextId,
+      });
+
+      for (final reading in scan.readings) {
+        await txn.insert('raw_scan_readings', {
+          'raw_scan_id': rawScanId,
+          'bssid': reading.bssid,
+          'rssi': reading.rssi,
+          'frequency': reading.frequency,
+          'ssid': reading.ssid,
+        });
+      }
+
+      return rawScanId;
+    });
+  }
+
+  Future<List<RawWifiScan>> getRawScans({
+    int limit = 50,
+    String? sessionId,
+    String? contextId,
+  }) async {
+    final db = await database;
+    final filters = <String>[];
+    final args = <Object?>[];
+    if (sessionId != null) {
+      filters.add('session_id = ?');
+      args.add(sessionId);
+    }
+    if (contextId != null) {
+      filters.add('context_id = ?');
+      args.add(contextId);
+    }
+
+    final rows = await db.query(
+      'raw_scans',
+      where: filters.isNotEmpty ? filters.join(' AND ') : null,
+      whereArgs: filters.isNotEmpty ? args : null,
+      orderBy: 'timestamp DESC',
+      limit: limit,
+    );
+
+    final scans = <RawWifiScan>[];
+    for (final row in rows) {
+      final rawScanId = row['id'] as int;
+      final readingMaps = await db.query(
+        'raw_scan_readings',
+        where: 'raw_scan_id = ?',
+        whereArgs: [rawScanId],
+      );
+
+      final readings = readingMaps
+          .map(
+            (e) => WifiReading(
+              bssid: e['bssid'] as String,
+              rssi: e['rssi'] as int,
+              frequency: e['frequency'] as int?,
+              ssid: e['ssid'] as String?,
+            ),
+          )
+          .toList();
+
+      scans.add(
+        RawWifiScan(
+          id: rawScanId,
+          deviceId: row['device_id'] as String,
+          timestamp: DateTime.parse(row['timestamp'] as String),
+          sessionId: row['session_id'] as String?,
+          contextId: row['context_id'] as String?,
+          readings: readings,
+        ),
+      );
+    }
+
+    return scans;
   }
 }
 

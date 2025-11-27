@@ -22,6 +22,8 @@ class FingerprintService {
     required double longitude,
     String? zoneLabel,
     WifiScanResult? scanResult,
+    String? sessionId,
+    String? contextId,
   }) async {
     // اگر اسکن ارائه نشده، یک اسکن جدید انجام می‌دهیم
     if (scanResult == null) {
@@ -40,6 +42,8 @@ class FingerprintService {
       latitude: latitude,
       longitude: longitude,
       zoneLabel: zoneLabel,
+      sessionId: sessionId,
+      contextId: contextId,
       accessPoints: scanResult.accessPoints,
       createdAt: DateTime.now(),
       deviceId: deviceId,
