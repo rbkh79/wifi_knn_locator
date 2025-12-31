@@ -54,6 +54,12 @@ import 'services/path_analysis_service.dart';
 import 'services/location_confidence_service.dart';
 import 'services/auto_csv_service.dart';
 import 'services/map_reference_point_picker.dart';
+import 'services/unified_localization_service.dart';
+import 'services/trajectory_service.dart';
+import 'services/path_prediction_service.dart';
+import 'widgets/environment_indicator.dart';
+import 'widgets/trajectory_display.dart';
+import 'widgets/prediction_display.dart';
 import 'utils/privacy_utils.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
@@ -124,6 +130,12 @@ class _HomePageState extends State<HomePage> {
   late final DataExportService _dataExportService;
   late final PathAnalysisService _pathAnalysisService;
   late final LocationConfidenceService _locationConfidenceService;
+  late final UnifiedLocalizationService _unifiedLocalizationService;
+  
+  // Unified localization state
+  UnifiedLocalizationResult? _unifiedResult;
+  PathPredictionResult? _pathPrediction;
+  List<TrajectoryPoint> _trajectory = [];
   
   // Path visualization
   List<LocationHistoryEntry> _userPath = [];
@@ -163,6 +175,7 @@ class _HomePageState extends State<HomePage> {
     _dataExportService = DataExportService(_database);
     _pathAnalysisService = PathAnalysisService(_database);
     _locationConfidenceService = LocationConfidenceService(_database);
+    _unifiedLocalizationService = UnifiedLocalizationService(_database);
     
     // دریافت شناسه دستگاه
     _deviceId = await PrivacyUtils.getDeviceId();
@@ -350,6 +363,8 @@ class _HomePageState extends State<HomePage> {
       _currentScanResult = null;
       _locationEstimate = null;
       _movementPrediction = null;
+      _unifiedResult = null;
+      _pathPrediction = null;
     });
 
     try {
@@ -409,14 +424,28 @@ class _HomePageState extends State<HomePage> {
         gpsKnnDistance: null,
       );
 
-      // اگر در حالت آموزش نیستیم، تخمین موقعیت Hybrid انجام می‌دهیم
-      if (!_isTrainingMode) {
-        // استفاده از estimateLocationHybrid برای پشتیبانی از Indoor و Outdoor
-        final estimate = await _knnLocalization.estimateLocationHybrid(
-          wifiScan: scanResult,
-          cellScan: cellScanResult,
-          k: AppConfig.defaultK,
+      // اگر در حالت آموزش نیستیم، تخمین موقعیت یکپارچه انجام می‌دهیم
+      if (!_isTrainingMode && _deviceId != null) {
+        // استفاده از UnifiedLocalizationService برای پشتیبانی از Indoor و Outdoor
+        final unifiedResult = await _unifiedLocalizationService.performLocalization(
+          deviceId: _deviceId!,
+          preferIndoor: true,
         );
+
+        // بارگذاری مسیر حرکت
+        _trajectory = await _unifiedLocalizationService.getRecentTrajectory(
+          deviceId: _deviceId!,
+          limit: 50,
+        );
+
+        // پیش‌بینی مسیر آینده
+        _pathPrediction = await _unifiedLocalizationService.predictPath(
+          deviceId: _deviceId!,
+          method: 'markov',
+          steps: 3,
+        );
+
+        final estimate = unifiedResult.estimate;
 
         // بررسی اطمینان موقعیت
         final confidenceResult = await _locationConfidenceService.checkLocationConfidence(
@@ -428,6 +457,7 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _locationEstimate = estimate;
           _confidenceResult = confidenceResult;
+          _unifiedResult = unifiedResult;
         });
 
         // ذخیره مجدد CSV با اطلاعات کامل (KNN و confidence)
