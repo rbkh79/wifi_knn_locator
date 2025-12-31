@@ -1,19 +1,80 @@
-# اپلیکیشن موقعیت‌یابی داخلی با Wi-Fi و الگوریتم KNN
+# اپلیکیشن موقعیت‌یابی یکپارچه با Wi-Fi و KNN
 
-یک اپلیکیشن موبایل Flutter برای موقعیت‌یابی داخلی (Indoor Localization) با استفاده از اسکن Wi-Fi (RSSI + MAC) و الگوریتم K-Nearest Neighbors (KNN).
+یک اپلیکیشن موبایل Flutter برای موقعیت‌یابی یکپارچه (Indoor/Outdoor/Hybrid Localization) با استفاده از اسکن Wi-Fi (RSSI + MAC)، دکل‌های مخابراتی (Cell Towers) و الگوریتم K-Nearest Neighbors (KNN).
 
 ## ویژگی‌ها
 
-- ✅ اسکن دوره‌ای نقاط دسترسی Wi-Fi (Access Points)
-- ✅ ثبت داده‌های کامل: MAC (BSSID)، RSSI، فرکانس، SSID
-- ✅ هش کردن MAC دستگاه کاربر برای حفظ حریم خصوصی
-- ✅ پایگاه داده آفلاین SQLite برای ذخیره اثرانگشت‌ها
-- ✅ الگوریتم KNN برای تخمین موقعیت
-- ✅ نمایش ضریب اطمینان (Confidence Score)
-- ✅ حالت آموزش (Training Mode) برای جمع‌آوری داده
-- ✅ رابط کاربری کاربرپسند و شفاف
-- ✅ نمایش شفاف اطلاعات حریم خصوصی
-- ✅ تست‌های واحد برای ماژول‌های اصلی
+### مکان‌یابی
+- ✅ **مکان‌یابی Indoor**: با استفاده از Wi-Fi Fingerprinting و الگوریتم KNN
+- ✅ **مکان‌یابی Outdoor**: با استفاده از دکل‌های مخابراتی (Cell Towers)
+- ✅ **مکان‌یابی یکپارچه (Unified)**: ترکیب خودکار Indoor و Outdoor
+- ✅ **تشخیص خودکار محیط**: Indoor/Outdoor/Hybrid/Unknown
+- ✅ **الگوریتم KNN قابل تنظیم**: با Adaptive K و وزن‌دهی RSSI
+
+### مسیر و پیش‌بینی
+- ✅ **ردیابی مسیر (Trajectory Tracking)**: ذخیره و نمایش مسیر حرکت
+- ✅ **پیش‌بینی مسیر (Path Prediction)**: پیش‌بینی موقعیت‌های آینده با مدل Markov
+- ✅ **نمایش مسیر روی نقشه**: با رنگ‌بندی بر اساس نوع محیط
+
+### رابط کاربری
+- ✅ **نقشه تعاملی**: افزودن نقاط مرجع با لمس نقشه (flutter_map)
+- ✅ **نمایش وضعیت محیط**: نمایشگر بصری Indoor/Outdoor/Hybrid
+- ✅ **نمایش پیش‌بینی**: نمایش نتایج پیش‌بینی مسیر
+- ✅ **رابط کاربری Material Design 3**: مدرن و کاربرپسند
+
+### داده و ذخیره‌سازی
+- ✅ **پایگاه داده آفلاین SQLite**: ذخیره اثرانگشت‌ها و تاریخچه
+- ✅ **ثبت خودکار اسکن‌ها**: لاگ تمام اسکن‌های Wi-Fi و نتایج KNN
+- ✅ **خروجی داده (Data Export)**: خروجی CSV و به‌اشتراک‌گذاری
+- ✅ **تنظیمات قابل ذخیره**: ذخیره تنظیمات کاربر
+
+### حریم خصوصی و امنیت
+- ✅ **هش کردن MAC دستگاه**: با SHA-256 برای حفظ حریم خصوصی
+- ✅ **ماسک کردن MAC**: نمایش جزئی MAC addressها
+- ✅ **پنل شفافیت**: نمایش اطلاعات حریم خصوصی
+- ✅ **ذخیره محلی**: تمام داده‌ها در دستگاه کاربر
+
+### سایر ویژگی‌ها
+- ✅ **حالت آموزش (Training Mode)**: جمع‌آوری داده‌های اثرانگشت
+- ✅ **تحلیل مسیر (Path Analysis)**: تحلیل الگوهای حرکت
+- ✅ **محاسبه اعتماد (Confidence Calculation)**: محاسبه دقیق ضریب اطمینان
+- ✅ **تست‌های واحد**: برای ماژول‌های اصلی
+
+## تشخیص محیط (Indoor/Outdoor Detection)
+
+اپلیکیشن به صورت خودکار نوع محیط را تشخیص می‌دهد و بهترین روش مکان‌یابی را انتخاب می‌کند:
+
+### محیط بسته (Indoor)
+محیط به عنوان **Indoor** تشخیص داده می‌شود اگر:
+- **حداقل 3 نقطه دسترسی Wi-Fi** شناسایی شود
+- **قدرت سیگنال Wi-Fi > 0.3** باشد
+
+**محاسبه قدرت Wi-Fi:**
+- 60% میانگین قدرت سیگنال (RSSI): از -100 dBm (ضعیف) تا -50 dBm (عالی)
+- 40% تعداد نقاط دسترسی: 3+ نقطه = امتیاز کامل
+
+**مثال:**
+- میانگین RSSI: -70 dBm → امتیاز: 0.6
+- تعداد AP: 5 → امتیاز: 1.0
+- قدرت کل: (0.6 × 0.6) + (1.0 × 0.4) = 0.76 ✅
+
+### محیط باز (Outdoor)
+محیط به عنوان **Outdoor** تشخیص داده می‌شود اگر:
+- **حداقل 1 دکل مخابراتی** شناسایی شود
+
+در این حالت از مکان‌یابی مبتنی بر دکل‌های مخابراتی (Cell Towers) استفاده می‌شود.
+
+### حالت ترکیبی (Hybrid)
+زمانی که **هر دو** شرط Indoor و Outdoor برقرار باشد:
+- از هر دو روش مکان‌یابی استفاده می‌شود (Wi-Fi + Cell Towers)
+- نتایج با وزن‌دهی ترکیب می‌شوند (پیش‌فرض: 70% Indoor + 30% Outdoor)
+- دقت بالاتری در محیط‌های مرزی (مثل ورودی ساختمان) ارائه می‌دهد
+
+### حالت نامشخص (Unknown)
+زمانی که هیچ یک از شرایط بالا برقرار نباشد:
+- نتیجه مکان‌یابی نامعتبر تلقی می‌شود
+- به کاربر نمایش داده نمی‌شود
+- کاربر باید به نقطه‌ای با سیگنال بهتر منتقل شود
 
 ## معماری سیستم
 
@@ -21,31 +82,59 @@
 
 ```
 lib/
-├── config.dart                 # تنظیمات و پارامترهای قابل تنظیم
-├── data_model.dart             # مدل‌های داده (WifiReading, FingerprintEntry, LocationEstimate)
-├── wifi_scanner.dart           # ماژول اسکن Wi-Fi
-├── local_database.dart         # مدیریت پایگاه داده SQLite
-├── knn_localization.dart       # پیاده‌سازی الگوریتم KNN
-├── main.dart                   # رابط کاربری اصلی
+├── config.dart                      # تنظیمات و پارامترهای قابل تنظیم
+├── data_model.dart                  # مدل‌های داده (WifiReading, FingerprintEntry, LocationEstimate, ...)
+├── wifi_scanner.dart                # ماژول اسکن Wi-Fi
+├── cell_scanner.dart                # ماژول اسکن دکل‌های مخابراتی
+├── local_database.dart              # مدیریت پایگاه داده SQLite
+├── knn_localization.dart            # پیاده‌سازی الگوریتم KNN
+├── main.dart                        # رابط کاربری اصلی
 ├── services/
-│   └── fingerprint_service.dart # سرویس مدیریت اثرانگشت‌ها
+│   ├── fingerprint_service.dart     # سرویس مدیریت اثرانگشت‌ها
+│   ├── indoor_localization_service.dart    # سرویس مکان‌یابی Indoor
+│   ├── outdoor_localization_service.dart   # سرویس مکان‌یابی Outdoor
+│   ├── unified_localization_service.dart   # سرویس مکان‌یابی یکپارچه
+│   ├── trajectory_service.dart      # سرویس ردیابی مسیر
+│   ├── path_prediction_service.dart # سرویس پیش‌بینی مسیر
+│   ├── movement_prediction_service.dart    # سرویس پیش‌بینی حرکت
+│   ├── data_logger_service.dart     # سرویس ثبت خودکار داده‌ها
+│   ├── data_export_service.dart     # سرویس خروجی داده
+│   ├── location_service.dart        # سرویس موقعیت‌یابی
+│   ├── settings_service.dart        # سرویس تنظیمات
+│   ├── location_confidence_service.dart    # سرویس محاسبه اعتماد
+│   ├── path_analysis_service.dart   # سرویس تحلیل مسیر
+│   ├── fingerprint_validator.dart   # سرویس اعتبارسنجی اثرانگشت
+│   ├── auto_csv_service.dart        # سرویس خودکار CSV
+│   └── map_reference_point_picker.dart     # انتخاب نقطه مرجع از نقشه
+├── widgets/
+│   ├── environment_indicator.dart   # نمایشگر وضعیت محیط
+│   ├── trajectory_display.dart      # نمایش مسیر
+│   └── prediction_display.dart      # نمایش پیش‌بینی
 └── utils/
-    └── privacy_utils.dart      # ابزارهای حریم خصوصی (هش MAC)
+    └── privacy_utils.dart           # ابزارهای حریم خصوصی (هش MAC)
 ```
 
 ### جریان داده‌ها
 
 ```
-1. اسکن Wi-Fi (wifi_scanner.dart)
+1. اسکن Wi-Fi + Cell Towers (wifi_scanner.dart + cell_scanner.dart)
    ↓
-2. WifiScanResult (data_model.dart)
+2. WifiScanResult + CellScanResult (data_model.dart)
    ↓
-3. [حالت آموزش] → ذخیره در پایگاه داده (local_database.dart)
-   [حالت آنلاین] → تخمین موقعیت با KNN (knn_localization.dart)
+3. Unified Localization Service
+   ├─ Indoor Localization Service (Wi-Fi → KNN)
+   └─ Outdoor Localization Service (Cell Towers → KNN)
    ↓
-4. LocationEstimate (data_model.dart)
+4. تشخیص محیط (Indoor/Outdoor/Hybrid)
    ↓
-5. نمایش در UI (main.dart)
+5. UnifiedLocalizationResult
+   ↓
+6. [حالت آموزش] → ذخیره در پایگاه داده (local_database.dart)
+   [حالت آنلاین] → 
+      ├─ نمایش در UI (main.dart)
+      ├─ ذخیره در Trajectory Service
+      ├─ پیش‌بینی مسیر (Path Prediction Service)
+      └─ ثبت در Data Logger Service
 ```
 
 ## نصب و راه‌اندازی
@@ -78,22 +167,37 @@ flutter run -d ios
 ### حالت آنلاین (تخمین موقعیت)
 
 1. **اجرای اسکن**: روی دکمه "اسکن WiFi" کلیک کنید
+   - اپلیکیشن به صورت خودکار اسکن Wi-Fi و Cell Towers را انجام می‌دهد
 2. **نمایش نتایج**: 
-   - موقعیت تخمینی (عرض و طول جغرافیایی)
-   - ضریب اطمینان (Confidence)
-   - لیست شبکه‌های Wi-Fi مشاهده شده
-   - نمایش روی نقشه
+   - **موقعیت تخمینی**: عرض و طول جغرافیایی
+   - **نوع محیط**: Indoor/Outdoor/Hybrid/Unknown
+   - **ضریب اطمینان**: میزان اعتماد به نتیجه
+   - **لیست شبکه‌های Wi-Fi**: مشاهده شده با RSSI
+   - **نقشه**: نمایش موقعیت روی نقشه تعاملی
+   - **مسیر حرکت**: نمایش مسیر ردیابی شده (در صورت فعال بودن)
+   - **پیش‌بینی مسیر**: نمایش موقعیت‌های پیش‌بینی شده آینده
 
 ### حالت آموزش (Training Mode)
 
 1. **فعال‌سازی حالت آموزش**: سوئیچ "حالت آموزش" را روشن کنید
-2. **ایستادن در نقطه مرجع**: در نقطه‌ای با مختصات شناخته‌شده بایستید
-3. **اجرای اسکن**: روی دکمه "اسکن WiFi" کلیک کنید
-4. **وارد کردن مختصات**:
-   - عرض جغرافیایی (Latitude)
-   - طول جغرافیایی (Longitude)
-   - لیبل ناحیه (اختیاری)
-5. **ذخیره اثرانگشت**: روی دکمه "ذخیره اثرانگشت" کلیک کنید
+2. **انتخاب نقطه مرجع**:
+   - **روش 1**: لمس کردن نقشه برای انتخاب مختصات
+   - **روش 2**: وارد کردن دستی مختصات
+3. **ایستادن در نقطه مرجع**: در نقطه انتخاب شده بایستید
+4. **اجرای اسکن**: روی دکمه "اسکن WiFi" کلیک کنید
+   - در حالت Validation، چندین اسکن انجام می‌شود برای اطمینان از کیفیت
+5. **وارد کردن اطلاعات**:
+   - عرض جغرافیایی (Latitude) - در صورت استفاده از روش 2
+   - طول جغرافیایی (Longitude) - در صورت استفاده از روش 2
+   - لیبل ناحیه (اختیاری) - برای شناسایی راحت‌تر
+6. **ذخیره اثرانگشت**: روی دکمه "ذخیره اثرانگشت" کلیک کنید
+
+### ویژگی‌های اضافی
+
+- **نمایش مسیر**: مسیر حرکت کاربر روی نقشه نمایش داده می‌شود
+- **پیش‌بینی مسیر**: اپلیکیشن موقعیت‌های احتمالی آینده را پیش‌بینی می‌کند
+- **خروجی داده**: امکان خروجی گرفتن داده‌ها به صورت CSV
+- **تنظیمات**: امکان تنظیم استفاده از GPS، نمایش مسیر و سایر تنظیمات
 
 ### جمع‌آوری داده‌های آموزش
 
@@ -241,41 +345,180 @@ flutter test test/privacy_utils_test.dart
 فایل `lib/config.dart` شامل تمام پارامترهای قابل تنظیم است:
 
 ```dart
-// پارامترهای KNN
-static const int defaultK = 3;  // تعداد همسایه‌ها
-
 // پارامترهای اسکن
 static const Duration scanInterval = Duration(seconds: 5);
 static const int minApCountForEvaluation = 3;
+static const Duration scanWaitTime = Duration(seconds: 2);
+
+// پارامترهای KNN
+static const int defaultK = 3;  // تعداد همسایه‌ها
+static const int minK = 1;
+static const int maxK = 10;
+static const bool enableAdaptiveK = true;  // فعال‌سازی K تطبیقی
+static const double adaptiveRadiusMeters = 4.0;
+static const int adaptiveNeighborsPerK = 4;
+
+// پارامترهای پایگاه داده
+static const String databaseName = 'wifi_fingerprints.db';
+static const int databaseVersion = 4;
+
+// پارامترهای حریم خصوصی
+static const bool hashDeviceMac = true;
+static const bool showFullMacAddresses = false;
+
+// پارامترهای UI
+static const double defaultMapZoom = 15.0;
+static const double minMapZoom = 5.0;
+static const double maxMapZoom = 18.0;
+
+// آستانه‌های RSSI
+static const int excellentRssi = -50;  // dBm
+static const int goodRssi = -60;
+static const int fairRssi = -70;
+static const int poorRssi = -80;
 
 // پارامترهای اعتماد
-static const double confidenceThreshold = 0.3;
+static const double confidenceThreshold = 0.3;  // حداقل اعتماد برای نمایش
+static const double minConfidence = 0.0;
+static const double maxConfidence = 1.0;
+
+// تنظیمات بهبود KNN
+static const bool useRssiWeighting = true;  // وزن‌دهی RSSI
+static const bool useNoiseFiltering = true;  // فیلتر نویز
+static const int minApOccurrencePercent = 70;
+static const int validationScanCount = 3;
+static const double maxRssiVariance = 15.0;  // dBm
 ```
 
 ## ساختار پایگاه داده
 
-### جدول `fingerprints`
+### جداول اثرانگشت Wi-Fi
+
+#### جدول `fingerprints`
 
 | ستون | نوع | توضیح |
 |------|-----|-------|
 | id | INTEGER | شناسه یکتا |
-| fingerprint_id | TEXT | شناسه اثرانگشت |
+| fingerprint_id | TEXT | شناسه اثرانگشت (UNIQUE) |
 | latitude | REAL | عرض جغرافیایی |
 | longitude | REAL | طول جغرافیایی |
 | zone_label | TEXT | لیبل ناحیه (اختیاری) |
+| session_id | TEXT | شناسه جلسه آموزش |
+| context_id | TEXT | شناسه زمینه |
 | created_at | TEXT | زمان ایجاد |
 | device_id | TEXT | شناسه دستگاه |
 
-### جدول `access_points`
+#### جدول `access_points`
 
 | ستون | نوع | توضیح |
 |------|-----|-------|
 | id | INTEGER | شناسه یکتا |
 | fingerprint_id | TEXT | شناسه اثرانگشت (Foreign Key) |
 | bssid | TEXT | MAC address (BSSID) |
-| rssi | INTEGER | قدرت سیگنال |
+| rssi | INTEGER | قدرت سیگنال (dBm) |
 | frequency | INTEGER | فرکانس (MHz) |
 | ssid | TEXT | نام شبکه |
+
+### جداول اثرانگشت Cell Towers
+
+#### جدول `cell_fingerprints`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| fingerprint_id | TEXT | شناسه اثرانگشت (UNIQUE) |
+| latitude | REAL | عرض جغرافیایی |
+| longitude | REAL | طول جغرافیایی |
+| zone_label | TEXT | لیبل ناحیه (اختیاری) |
+| created_at | TEXT | زمان ایجاد |
+| device_id | TEXT | شناسه دستگاه |
+
+#### جدول `cell_towers`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| fingerprint_id | TEXT | شناسه اثرانگشت (Foreign Key) |
+| cell_id | INTEGER | شناسه سلول |
+| lac | INTEGER | Location Area Code |
+| tac | INTEGER | Tracking Area Code |
+| signal_strength | INTEGER | قدرت سیگنال (dBm) |
+| mcc | INTEGER | Mobile Country Code |
+| mnc | INTEGER | Mobile Network Code |
+
+### جداول تاریخچه و لاگ
+
+#### جدول `wifi_scans`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| device_id | TEXT | شناسه دستگاه |
+| timestamp | TEXT | زمان اسکن |
+
+#### جدول `wifi_scan_readings`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| scan_id | INTEGER | شناسه اسکن (Foreign Key) |
+| bssid | TEXT | MAC address |
+| rssi | INTEGER | قدرت سیگنال |
+| frequency | INTEGER | فرکانس |
+| ssid | TEXT | نام شبکه |
+
+#### جدول `location_history`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| device_id | TEXT | شناسه دستگاه |
+| latitude | REAL | عرض جغرافیایی |
+| longitude | REAL | طول جغرافیایی |
+| zone_label | TEXT | لیبل ناحیه |
+| confidence | REAL | ضریب اطمینان |
+| timestamp | TEXT | زمان ثبت |
+| environment_type | TEXT | نوع محیط (indoor/outdoor/hybrid) |
+
+#### جدول `raw_scans`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| device_id | TEXT | شناسه دستگاه |
+| timestamp | TEXT | زمان اسکن |
+| session_id | TEXT | شناسه جلسه |
+| context_id | TEXT | شناسه زمینه |
+
+#### جدول `raw_scan_readings`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| id | INTEGER | شناسه یکتا |
+| raw_scan_id | INTEGER | شناسه اسکن خام (Foreign Key) |
+| bssid | TEXT | MAC address |
+| rssi | INTEGER | قدرت سیگنال |
+| frequency | INTEGER | فرکانس |
+| ssid | TEXT | نام شبکه |
+
+### جداول مدیریتی
+
+#### جدول `training_sessions`
+
+| ستون | نوع | توضیح |
+|------|-----|-------|
+| session_id | TEXT | شناسه جلسه (PRIMARY KEY) |
+| context_id | TEXT | شناسه زمینه |
+| started_at | TEXT | زمان شروع |
+| finished_at | TEXT | زمان پایان |
+
+### ایندکس‌ها
+
+برای بهبود عملکرد، ایندکس‌های زیر ایجاد شده‌اند:
+- `idx_fingerprint_id` روی `fingerprints(fingerprint_id)`
+- `idx_ap_fingerprint_id` روی `access_points(fingerprint_id)`
+- `idx_ap_bssid` روی `access_points(bssid)`
+- `idx_scan_timestamp` روی `wifi_scans(timestamp)`
 
 ## عیب‌یابی
 
@@ -307,11 +550,38 @@ static const double confidenceThreshold = 0.3;
 
 در `android/app/src/main/AndroidManifest.xml`:
 
+**مجوزهای مکان‌یابی و Wi-Fi:**
 ```xml
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+```
+
+**مجوزهای شبکه:**
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+```
+
+**مجوز اسکن دکل‌های مخابراتی (برای Outdoor Localization):**
+```xml
+<uses-permission android:name="android.permission.READ_PHONE_STATE" />
+```
+
+**مجوزهای ذخیره‌سازی (برای خروجی CSV):**
+```xml
+<!-- برای Android 12 و پایین‌تر -->
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+    android:maxSdkVersion="32" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+    android:maxSdkVersion="32" />
+
+<!-- برای Android 13+ -->
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 ```
 
 ### iOS
@@ -320,8 +590,13 @@ static const double confidenceThreshold = 0.3;
 
 ```xml
 <key>NSLocationWhenInUseUsageDescription</key>
-<string>برای اسکن Wi-Fi نیاز به دسترسی مکان داریم</string>
+<string>برای اسکن Wi-Fi و مکان‌یابی نیاز به دسترسی مکان داریم</string>
+
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>برای ردیابی مسیر نیاز به دسترسی مکان داریم</string>
 ```
+
+**نکته مهم:** در Android 6.0+ (API 23+)، مجوزهای مکان باید به صورت runtime از کاربر درخواست شوند.
 
 ## توسعه‌دهندگان
 
@@ -348,4 +623,11 @@ static const double confidenceThreshold = 0.3;
 
 ---
 
-**نکته**: این اپلیکیشن برای موقعیت‌یابی داخلی طراحی شده است و دقت آن به کیفیت داده‌های آموزش وابسته است.
+## نکات مهم
+
+- این اپلیکیشن برای موقعیت‌یابی یکپارچه (Indoor/Outdoor/Hybrid) طراحی شده است
+- دقت مکان‌یابی به کیفیت داده‌های آموزش (Fingerprints) وابسته است
+- برای دقت بهتر در محیط Indoor، حداقل 10-20 نقطه مرجع در هر ناحیه توصیه می‌شود
+- مکان‌یابی Outdoor نیاز به شناسایی حداقل یک دکل مخابراتی دارد
+- تمام داده‌ها به صورت محلی (Local) ذخیره می‌شوند و هیچ داده‌ای به سرور ارسال نمی‌شود
+- این اپلیکیشن GPS-Free است و برای حفظ حریم خصوصی طراحی شده است
