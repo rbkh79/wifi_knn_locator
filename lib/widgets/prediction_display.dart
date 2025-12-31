@@ -27,11 +27,13 @@ class PredictionDisplay {
         .map((loc) => LatLng(loc.latitude, loc.longitude))
         .toList();
 
+    // در flutter_map 7.0.2، pattern به صورت مستقیم پشتیبانی نمی‌شود
+    // برای خط چین، می‌توان از borderStrokeWidth استفاده کرد
     return Polyline(
       points: points,
       strokeWidth: strokeWidth,
       color: color ?? Colors.orange,
-      pattern: isDashed ? StrokePattern.dashed(segmentLength: 5) : null,
+      // pattern برای خط چین در نسخه 7.0.2 به صورت مستقیم پشتیبانی نمی‌شود
     );
   }
 
@@ -41,34 +43,37 @@ class PredictionDisplay {
   ) {
     if (prediction.predictedLocations.isEmpty) return [];
 
-    return prediction.predictedLocations.asMap().entries.map((entry) {
+    final markers = <Marker>[];
+    for (final entry in prediction.predictedLocations.asMap().entries) {
       final index = entry.key;
       final location = entry.value;
 
-      return Marker(
-        point: LatLng(location.latitude, location.longitude),
-        width: 12,
-        height: 12,
-        builder: (context) => Container(
-          decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.7),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.orange, width: 2),
-          ),
-          child: Center(
-            child: Text(
-              '${index + 1}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
+      markers.add(
+        Marker(
+          point: LatLng(location.latitude, location.longitude),
+          width: 12,
+          height: 12,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.7),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.orange, width: 2),
+            ),
+            child: Center(
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
         ),
-        anchorPos: AnchorPos.exactly(Anchor(6, 6)),
       );
-    }).toList();
+    }
+    return markers;
   }
 
   /// ساخت ویجت اطلاعات پیش‌بینی

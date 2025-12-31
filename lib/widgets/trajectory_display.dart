@@ -53,14 +53,13 @@ class TrajectoryDisplay {
           point: LatLng(point.latitude, point.longitude),
           width: 8,
           height: 8,
-          builder: (context) => Container(
+          child: Container(
             decoration: BoxDecoration(
               color: _getColorForEnvironment(point.environmentType),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 1),
             ),
           ),
-          anchorPos: AnchorPos.exactly(Anchor(4, 4)),
         ),
       );
     }
