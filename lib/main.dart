@@ -960,9 +960,21 @@ class _HomePageState extends State<HomePage> {
             _buildMapSection(),
             const SizedBox(height: 16),
             
+            // بخش وضعیت محیط (Indoor/Outdoor)
+            if (_unifiedResult != null)
+              _buildEnvironmentSection(),
+            if (_unifiedResult != null)
+              const SizedBox(height: 16),
+            
             // بخش نتایج سیگنال‌ها
             _buildSignalResultsSection(),
             const SizedBox(height: 16),
+            
+            // بخش پیش‌بینی مسیر
+            if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
+              _buildPathPredictionSection(),
+            if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
+              const SizedBox(height: 16),
 
             // بخش دیباگ
             _buildDebugPanel(),
@@ -1259,6 +1271,30 @@ class _HomePageState extends State<HomePage> {
                           borderColor: Colors.orange.shade200,
                         ),
                       ],
+                    ),
+                  // نمایش مسیر حرکت از TrajectoryService
+                  if (_trajectory.length > 1)
+                    PolylineLayer(
+                      polylines: [
+                        TrajectoryDisplay.buildTrajectoryPolyline(_trajectory),
+                      ],
+                    ),
+                  // نمایش نقاط مسیر
+                  if (_trajectory.isNotEmpty)
+                    MarkerLayer(
+                      markers: TrajectoryDisplay.buildTrajectoryMarkers(_trajectory),
+                    ),
+                  // نمایش پیش‌بینی مسیر
+                  if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
+                    PolylineLayer(
+                      polylines: [
+                        PredictionDisplay.buildPredictionPolyline(_pathPrediction!),
+                      ],
+                    ),
+                  // نمایش نقاط پیش‌بینی شده
+                  if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
+                    MarkerLayer(
+                      markers: PredictionDisplay.buildPredictionMarkers(_pathPrediction!),
                     ),
                   if (referenceMarkers.isNotEmpty)
                     MarkerLayer(markers: referenceMarkers),
@@ -1955,6 +1991,366 @@ class _HomePageState extends State<HomePage> {
     final currentSet = _currentScanResult!.accessPoints.map((ap) => ap.bssid).toSet();
     final fpSet = fingerprint.accessPoints.map((ap) => ap.bssid).toSet();
     return currentSet.intersection(fpSet).length;
+  }
+
+  /// بخش نمایش وضعیت محیط (Indoor/Outdoor/Hybrid)
+  Widget _buildEnvironmentSection() {
+    if (_unifiedResult == null) return const SizedBox.shrink();
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_searching, color: Colors.purple.shade700),
+                const SizedBox(width: 8),
+                const Text(
+                  'وضعیت محیط',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // نمایش وضعیت محیط
+            EnvironmentIndicator(
+              environmentType: _unifiedResult!.environmentType,
+              confidence: _unifiedResult!.confidence,
+            ),
+            const SizedBox(height: 12),
+            // اطلاعات تفصیلی
+            if (_unifiedResult!.indoorResult != null) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Wi-Fi: ${_unifiedResult!.indoorResult!.accessPointCount} AP، '
+                      'قدرت: ${(_unifiedResult!.indoorResult!.wifiStrength * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (_unifiedResult!.outdoorResult != null) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.signal_cellular_alt, color: Colors.green.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Cell: ${_unifiedResult!.outdoorResult!.cellTowerCount} دکل، '
+                      'میانگین سیگنال: ${_unifiedResult!.outdoorResult!.averageSignalStrength.toStringAsFixed(0)} dBm',
+                      style: TextStyle(fontSize: 12, color: Colors.green.shade900),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// بخش نمایش پیش‌بینی مسیر
+  Widget _buildPathPredictionSection() {
+    if (_pathPrediction == null || _pathPrediction!.predictedLocations.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.trending_up, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                const Text(
+                  'پیش‌بینی مسیر',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // نمایش اطلاعات پیش‌بینی
+            PredictionDisplay.buildPredictionInfo(_pathPrediction!),
+            const SizedBox(height: 12),
+            // نمایش نقاط پیش‌بینی شده
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'نقاط پیش‌بینی شده:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._pathPrediction!.predictedLocations.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final location = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '(${location.latitude.toStringAsFixed(6)}, ${location.longitude.toStringAsFixed(6)})',
+                              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                            ),
+                          ),
+                          Text(
+                            '${(location.confidence * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// بخش نمایش وضعیت محیط (Indoor/Outdoor/Hybrid)
+  Widget _buildEnvironmentSection() {
+    if (_unifiedResult == null) return const SizedBox.shrink();
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_searching, color: Colors.purple.shade700),
+                const SizedBox(width: 8),
+                const Text(
+                  'وضعیت محیط',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // نمایش وضعیت محیط
+            EnvironmentIndicator(
+              environmentType: _unifiedResult!.environmentType,
+              confidence: _unifiedResult!.confidence,
+            ),
+            const SizedBox(height: 12),
+            // اطلاعات تفصیلی
+            if (_unifiedResult!.indoorResult != null) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Wi-Fi: ${_unifiedResult!.indoorResult!.accessPointCount} AP، '
+                      'قدرت: ${(_unifiedResult!.indoorResult!.wifiStrength * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (_unifiedResult!.outdoorResult != null) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.signal_cellular_alt, color: Colors.green.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Cell: ${_unifiedResult!.outdoorResult!.cellTowerCount} دکل، '
+                      'میانگین سیگنال: ${_unifiedResult!.outdoorResult!.averageSignalStrength.toStringAsFixed(0)} dBm',
+                      style: TextStyle(fontSize: 12, color: Colors.green.shade900),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// بخش نمایش پیش‌بینی مسیر
+  Widget _buildPathPredictionSection() {
+    if (_pathPrediction == null || _pathPrediction!.predictedLocations.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.trending_up, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                const Text(
+                  'پیش‌بینی مسیر',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // نمایش اطلاعات پیش‌بینی
+            PredictionDisplay.buildPredictionInfo(_pathPrediction!),
+            const SizedBox(height: 12),
+            // نمایش نقاط پیش‌بینی شده
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'نقاط پیش‌بینی شده:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._pathPrediction!.predictedLocations.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final location = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '(${location.latitude.toStringAsFixed(6)}, ${location.longitude.toStringAsFixed(6)})',
+                              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                            ),
+                          ),
+                          Text(
+                            '${(location.confidence * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDebugPanel() {
