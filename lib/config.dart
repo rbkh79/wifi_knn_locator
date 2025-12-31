@@ -15,7 +15,7 @@ class AppConfig {
 
   // پارامترهای پایگاه داده
   static const String databaseName = 'wifi_fingerprints.db';
-  static const int databaseVersion = 3;
+  static const int databaseVersion = 4; // افزایش نسخه برای افزودن جداول سلولی
 
   // پارامترهای حریم خصوصی
   static const bool hashDeviceMac = true;

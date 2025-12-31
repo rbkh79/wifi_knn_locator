@@ -32,6 +32,7 @@ Generate the updated code starting from here:
 */
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -39,6 +40,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
 import 'data_model.dart';
 import 'wifi_scanner.dart';
+import 'cell_scanner.dart';
 import 'local_database.dart';
 import 'knn_localization.dart';
 import 'services/fingerprint_service.dart';
@@ -351,8 +353,17 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // اجرای اسکن - حتی اگر GPS خاموش باشد
+      // اجرای اسکن Wi-Fi - حتی اگر GPS خاموش باشد
       final scanResult = await WifiScanner.performScan();
+      
+      // اجرای اسکن Cell (برای موقعیت‌یابی Outdoor)
+      CellScanResult? cellScanResult;
+      try {
+        cellScanResult = await CellScanner.performScan();
+      } catch (e) {
+        debugPrint('Cell scan failed: $e');
+        // ادامه می‌دهیم حتی اگر Cell scan شکست بخورد
+      }
 
       // ثبت تاریخچه اسکن
       await _dataLogger.logWifiScan(scanResult);
@@ -363,15 +374,21 @@ class _HomePageState extends State<HomePage> {
         _expandedSignalResults = true; // باز کردن بخش نتایج
       });
 
-      // بررسی اینکه آیا شبکه‌ای پیدا شده است
-      if (scanResult.accessPoints.isEmpty) {
+      // بررسی اینکه آیا سیگنالی (Wi-Fi یا Cell) پیدا شده است
+      final hasWifi = scanResult.accessPoints.isNotEmpty;
+      final hasCell = cellScanResult != null && 
+                      (cellScanResult.servingCell != null || 
+                       cellScanResult.neighboringCells.isNotEmpty);
+
+      if (!hasWifi && !hasCell) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'هیچ شبکه Wi-Fi یافت نشد. لطفاً:\n'
-                '1. Wi-Fi را روشن کنید\n'
-                '2. مجوز Location را در تنظیمات فعال کنید\n'
+                'هیچ سیگنالی (Wi-Fi یا Cell) یافت نشد.\n'
+                'لطفاً:\n'
+                '1. Wi-Fi یا داده موبایل را روشن کنید\n'
+                '2. مجوز Location و Phone را در تنظیمات فعال کنید\n'
                 '3. دوباره تلاش کنید',
               ),
               backgroundColor: Colors.orange,
@@ -392,10 +409,12 @@ class _HomePageState extends State<HomePage> {
         gpsKnnDistance: null,
       );
 
-      // اگر در حالت آموزش نیستیم، تخمین موقعیت انجام می‌دهیم
+      // اگر در حالت آموزش نیستیم، تخمین موقعیت Hybrid انجام می‌دهیم
       if (!_isTrainingMode) {
-        final estimate = await _knnLocalization.estimateLocation(
-          scanResult,
+        // استفاده از estimateLocationHybrid برای پشتیبانی از Indoor و Outdoor
+        final estimate = await _knnLocalization.estimateLocationHybrid(
+          wifiScan: scanResult,
+          cellScan: cellScanResult,
           k: AppConfig.defaultK,
         );
 

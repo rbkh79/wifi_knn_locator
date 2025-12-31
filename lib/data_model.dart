@@ -310,3 +310,214 @@ class MovementPrediction {
   bool get hasPrediction => predictedZone != null && probability > 0;
 }
 
+/// اطلاعات یک دکل مخابراتی (Cell Tower)
+class CellTowerInfo {
+  final int? cellId; // Cell ID
+  final int? lac; // Location Area Code (2G/3G)
+  final int? tac; // Tracking Area Code (4G/5G)
+  final int? mcc; // Mobile Country Code
+  final int? mnc; // Mobile Network Code
+  final int? signalStrength; // قدرت سیگنال (dBm)
+  final String? networkType; // نوع شبکه (GSM, WCDMA, LTE, NR)
+  final int? psc; // Primary Scrambling Code (3G)
+  final int? pci; // Physical Cell ID (4G/5G)
+
+  CellTowerInfo({
+    this.cellId,
+    this.lac,
+    this.tac,
+    this.mcc,
+    this.mnc,
+    this.signalStrength,
+    this.networkType,
+    this.psc,
+    this.pci,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'cell_id': cellId,
+      'lac': lac,
+      'tac': tac,
+      'mcc': mcc,
+      'mnc': mnc,
+      'signal_strength': signalStrength,
+      'network_type': networkType,
+      'psc': psc,
+      'pci': pci,
+    };
+  }
+
+  factory CellTowerInfo.fromMap(Map<String, dynamic> map) {
+    return CellTowerInfo(
+      cellId: map['cell_id'] as int?,
+      lac: map['lac'] as int?,
+      tac: map['tac'] as int?,
+      mcc: map['mcc'] as int?,
+      mnc: map['mnc'] as int?,
+      signalStrength: map['signal_strength'] as int?,
+      networkType: map['network_type'] as String?,
+      psc: map['psc'] as int?,
+      pci: map['pci'] as int?,
+    );
+  }
+
+  /// تولید شناسه یکتا برای دکل
+  String get uniqueId {
+    final parts = <String>[];
+    if (mcc != null) parts.add('MCC:$mcc');
+    if (mnc != null) parts.add('MNC:$mnc');
+    if (lac != null) parts.add('LAC:$lac');
+    if (tac != null) parts.add('TAC:$tac');
+    if (cellId != null) parts.add('CID:$cellId');
+    if (psc != null) parts.add('PSC:$psc');
+    if (pci != null) parts.add('PCI:$pci');
+    return parts.join('|');
+  }
+
+  @override
+  String toString() => 'CellTowerInfo($uniqueId, signal: $signalStrength)';
+}
+
+/// اسکن کامل دکل‌های مخابراتی (شامل دکل متصل و همسایه‌ها)
+class CellScanResult {
+  final String deviceId;
+  final DateTime timestamp;
+  final CellTowerInfo? servingCell; // دکل متصل
+  final List<CellTowerInfo> neighboringCells; // دکل‌های همسایه
+
+  CellScanResult({
+    required this.deviceId,
+    required this.timestamp,
+    this.servingCell,
+    required this.neighboringCells,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'device_id': deviceId,
+      'timestamp': timestamp.toIso8601String(),
+      'serving_cell': servingCell?.toMap(),
+      'neighboring_cells': neighboringCells.map((cell) => cell.toMap()).toList(),
+    };
+  }
+
+  factory CellScanResult.fromMap(Map<String, dynamic> map) {
+    return CellScanResult(
+      deviceId: map['device_id'] as String,
+      timestamp: DateTime.parse(map['timestamp'] as String),
+      servingCell: map['serving_cell'] != null
+          ? CellTowerInfo.fromMap(map['serving_cell'] as Map<String, dynamic>)
+          : null,
+      neighboringCells: (map['neighboring_cells'] as List)
+          .map((cell) => CellTowerInfo.fromMap(cell as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  /// دریافت تمام دکل‌ها (متصل + همسایه)
+  List<CellTowerInfo> get allCells {
+    final cells = <CellTowerInfo>[];
+    if (servingCell != null) cells.add(servingCell!);
+    cells.addAll(neighboringCells);
+    return cells;
+  }
+}
+
+/// ورودی اثرانگشت سلولی (Cell Fingerprint Entry) در پایگاه داده
+class CellFingerprintEntry {
+  final int? id;
+  final String fingerprintId;
+  final double latitude;
+  final double longitude;
+  final String? zoneLabel;
+  final String? sessionId;
+  final String? contextId;
+  final List<CellTowerInfo> cellTowers;
+  final DateTime createdAt;
+  final String? deviceId;
+
+  CellFingerprintEntry({
+    this.id,
+    required this.fingerprintId,
+    required this.latitude,
+    required this.longitude,
+    this.zoneLabel,
+    this.sessionId,
+    this.contextId,
+    required this.cellTowers,
+    required this.createdAt,
+    this.deviceId,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'fingerprint_id': fingerprintId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'zone_label': zoneLabel,
+      'session_id': sessionId,
+      'context_id': contextId,
+      'cell_towers': cellTowers.map((cell) => cell.toMap()).toList(),
+      'created_at': createdAt.toIso8601String(),
+      'device_id': deviceId,
+    };
+  }
+
+  factory CellFingerprintEntry.fromMap(Map<String, dynamic> map) {
+    return CellFingerprintEntry(
+      id: map['id'] as int?,
+      fingerprintId: map['fingerprint_id'] as String,
+      latitude: map['latitude'] as double,
+      longitude: map['longitude'] as double,
+      zoneLabel: map['zone_label'] as String?,
+      sessionId: map['session_id'] as String?,
+      contextId: map['context_id'] as String?,
+      cellTowers: (map['cell_towers'] as List)
+          .map((cell) => CellTowerInfo.fromMap(cell as Map<String, dynamic>))
+          .toList(),
+      createdAt: DateTime.parse(map['created_at'] as String),
+      deviceId: map['device_id'] as String?,
+    );
+  }
+}
+
+/// اثرانگشت ترکیبی (Hybrid Fingerprint) شامل Wi-Fi و Cell
+class HybridFingerprintEntry {
+  final int? id;
+  final String fingerprintId;
+  final double latitude;
+  final double longitude;
+  final String? zoneLabel;
+  final String? sessionId;
+  final String? contextId;
+  final List<WifiReading>? accessPoints; // Wi-Fi APs (اختیاری)
+  final List<CellTowerInfo>? cellTowers; // Cell Towers (اختیاری)
+  final DateTime createdAt;
+  final String? deviceId;
+
+  HybridFingerprintEntry({
+    this.id,
+    required this.fingerprintId,
+    required this.latitude,
+    required this.longitude,
+    this.zoneLabel,
+    this.sessionId,
+    this.contextId,
+    this.accessPoints,
+    this.cellTowers,
+    required this.createdAt,
+    this.deviceId,
+  });
+
+  /// بررسی اینکه آیا اثرانگشت Wi-Fi دارد
+  bool get hasWifi => accessPoints != null && accessPoints!.isNotEmpty;
+
+  /// بررسی اینکه آیا اثرانگشت Cell دارد
+  bool get hasCell => cellTowers != null && cellTowers!.isNotEmpty;
+
+  /// بررسی اینکه آیا اثرانگشت ترکیبی است
+  bool get isHybrid => hasWifi && hasCell;
+}
+

@@ -141,6 +141,43 @@ class LocalDatabase {
 
     await db.execute('CREATE INDEX idx_raw_scan_timestamp ON raw_scans(timestamp)');
     await db.execute('CREATE INDEX idx_raw_scan_device ON raw_scans(device_id)');
+
+    // جداول اثرانگشت‌های سلولی (Cell Fingerprints)
+    await db.execute('''
+      CREATE TABLE cell_fingerprints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fingerprint_id TEXT UNIQUE NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        zone_label TEXT,
+        session_id TEXT,
+        context_id TEXT,
+        created_at TEXT NOT NULL,
+        device_id TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE cell_towers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fingerprint_id TEXT NOT NULL,
+        cell_id INTEGER,
+        lac INTEGER,
+        tac INTEGER,
+        mcc INTEGER,
+        mnc INTEGER,
+        signal_strength INTEGER,
+        network_type TEXT,
+        psc INTEGER,
+        pci INTEGER,
+        FOREIGN KEY (fingerprint_id) REFERENCES cell_fingerprints(fingerprint_id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_cell_fingerprint_id ON cell_fingerprints(fingerprint_id)');
+    await db.execute('CREATE INDEX idx_cell_tower_fingerprint_id ON cell_towers(fingerprint_id)');
+    await db.execute('CREATE INDEX idx_cell_tower_cell_id ON cell_towers(cell_id)');
+    await db.execute('CREATE INDEX idx_cell_tower_mcc_mnc ON cell_towers(mcc, mnc)');
   }
 
   /// به‌روزرسانی پایگاه داده (در صورت تغییر نسخه)
@@ -150,6 +187,9 @@ class LocalDatabase {
     }
     if (oldVersion < 3) {
       await _onUpgradeV3(db);
+    }
+    if (oldVersion < 4) {
+      await _onUpgradeV4(db);
     }
     debugPrint('Database upgrade from $oldVersion to $newVersion');
   }
@@ -228,6 +268,45 @@ class LocalDatabase {
 
     await db.execute('CREATE INDEX IF NOT EXISTS idx_raw_scan_timestamp ON raw_scans(timestamp)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_raw_scan_device ON raw_scans(device_id)');
+  }
+
+  Future<void> _onUpgradeV4(Database db) async {
+    // ایجاد جداول اثرانگشت‌های سلولی
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cell_fingerprints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fingerprint_id TEXT UNIQUE NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        zone_label TEXT,
+        session_id TEXT,
+        context_id TEXT,
+        created_at TEXT NOT NULL,
+        device_id TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cell_towers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fingerprint_id TEXT NOT NULL,
+        cell_id INTEGER,
+        lac INTEGER,
+        tac INTEGER,
+        mcc INTEGER,
+        mnc INTEGER,
+        signal_strength INTEGER,
+        network_type TEXT,
+        psc INTEGER,
+        pci INTEGER,
+        FOREIGN KEY (fingerprint_id) REFERENCES cell_fingerprints(fingerprint_id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_fingerprint_id ON cell_fingerprints(fingerprint_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_tower_fingerprint_id ON cell_towers(fingerprint_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_tower_cell_id ON cell_towers(cell_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_tower_mcc_mnc ON cell_towers(mcc, mnc)');
   }
 
   /// افزودن اثرانگشت جدید
@@ -396,6 +475,8 @@ class LocalDatabase {
     await db.delete('raw_scan_readings');
     await db.delete('raw_scans');
     await db.delete('training_sessions');
+    await db.delete('cell_towers');
+    await db.delete('cell_fingerprints');
     debugPrint('All fingerprints cleared');
   }
 
@@ -796,6 +877,184 @@ class LocalDatabase {
     }
 
     return scans;
+  }
+
+  // --- بخش مربوط به اثرانگشت‌های سلولی ---
+  
+  /// افزودن اثرانگشت سلولی جدید
+  Future<int> insertCellFingerprint(CellFingerprintEntry fingerprint) async {
+    final db = await database;
+    
+    try {
+      await db.transaction((txn) async {
+        // افزودن رکورد اصلی
+        await txn.insert(
+          'cell_fingerprints',
+          {
+            'fingerprint_id': fingerprint.fingerprintId,
+            'latitude': fingerprint.latitude,
+            'longitude': fingerprint.longitude,
+            'zone_label': fingerprint.zoneLabel,
+            'session_id': fingerprint.sessionId,
+            'context_id': fingerprint.contextId,
+            'created_at': fingerprint.createdAt.toIso8601String(),
+            'device_id': fingerprint.deviceId,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        // افزودن دکل‌های مخابراتی
+        for (final cell in fingerprint.cellTowers) {
+          await txn.insert(
+            'cell_towers',
+            {
+              'fingerprint_id': fingerprint.fingerprintId,
+              'cell_id': cell.cellId,
+              'lac': cell.lac,
+              'tac': cell.tac,
+              'mcc': cell.mcc,
+              'mnc': cell.mnc,
+              'signal_strength': cell.signalStrength,
+              'network_type': cell.networkType,
+              'psc': cell.psc,
+              'pci': cell.pci,
+            },
+          );
+        }
+      });
+
+      debugPrint('Cell fingerprint inserted: ${fingerprint.fingerprintId}');
+      return 1;
+    } catch (e) {
+      debugPrint('Error inserting cell fingerprint: $e');
+      rethrow;
+    }
+  }
+
+  /// دریافت تمام اثرانگشت‌های سلولی
+  Future<List<CellFingerprintEntry>> getAllCellFingerprints() async {
+    final db = await database;
+    
+    final fingerprintMaps = await db.query('cell_fingerprints', orderBy: 'created_at DESC');
+    
+    final fingerprints = <CellFingerprintEntry>[];
+    
+    for (final fpMap in fingerprintMaps) {
+      final fingerprintId = fpMap['fingerprint_id'] as String;
+      
+      // دریافت دکل‌های مخابراتی مربوطه
+      final cellMaps = await db.query(
+        'cell_towers',
+        where: 'fingerprint_id = ?',
+        whereArgs: [fingerprintId],
+      );
+      
+      final cellTowers = cellMaps.map((cellMap) {
+        return CellTowerInfo(
+          cellId: cellMap['cell_id'] as int?,
+          lac: cellMap['lac'] as int?,
+          tac: cellMap['tac'] as int?,
+          mcc: cellMap['mcc'] as int?,
+          mnc: cellMap['mnc'] as int?,
+          signalStrength: cellMap['signal_strength'] as int?,
+          networkType: cellMap['network_type'] as String?,
+          psc: cellMap['psc'] as int?,
+          pci: cellMap['pci'] as int?,
+        );
+      }).toList();
+      
+      fingerprints.add(CellFingerprintEntry(
+        id: fpMap['id'] as int?,
+        fingerprintId: fingerprintId,
+        latitude: fpMap['latitude'] as double,
+        longitude: fpMap['longitude'] as double,
+        zoneLabel: fpMap['zone_label'] as String?,
+        sessionId: fpMap['session_id'] as String?,
+        contextId: fpMap['context_id'] as String?,
+        cellTowers: cellTowers,
+        createdAt: DateTime.parse(fpMap['created_at'] as String),
+        deviceId: fpMap['device_id'] as String?,
+      ));
+    }
+    
+    return fingerprints;
+  }
+
+  /// دریافت اثرانگشت سلولی بر اساس شناسه
+  Future<CellFingerprintEntry?> getCellFingerprintById(String fingerprintId) async {
+    final db = await database;
+    
+    final fpMaps = await db.query(
+      'cell_fingerprints',
+      where: 'fingerprint_id = ?',
+      whereArgs: [fingerprintId],
+      limit: 1,
+    );
+    
+    if (fpMaps.isEmpty) return null;
+    
+    final fpMap = fpMaps.first;
+    
+    // دریافت دکل‌های مخابراتی
+    final cellMaps = await db.query(
+      'cell_towers',
+      where: 'fingerprint_id = ?',
+      whereArgs: [fingerprintId],
+    );
+    
+    final cellTowers = cellMaps.map((cellMap) {
+      return CellTowerInfo(
+        cellId: cellMap['cell_id'] as int?,
+        lac: cellMap['lac'] as int?,
+        tac: cellMap['tac'] as int?,
+        mcc: cellMap['mcc'] as int?,
+        mnc: cellMap['mnc'] as int?,
+        signalStrength: cellMap['signal_strength'] as int?,
+        networkType: cellMap['network_type'] as String?,
+        psc: cellMap['psc'] as int?,
+        pci: cellMap['pci'] as int?,
+      );
+    }).toList();
+    
+    return CellFingerprintEntry(
+      id: fpMap['id'] as int?,
+      fingerprintId: fingerprintId,
+      latitude: fpMap['latitude'] as double,
+      longitude: fpMap['longitude'] as double,
+      zoneLabel: fpMap['zone_label'] as String?,
+      sessionId: fpMap['session_id'] as String?,
+      contextId: fpMap['context_id'] as String?,
+      cellTowers: cellTowers,
+      createdAt: DateTime.parse(fpMap['created_at'] as String),
+      deviceId: fpMap['device_id'] as String?,
+    );
+  }
+
+  /// حذف اثرانگشت سلولی
+  Future<int> deleteCellFingerprint(String fingerprintId) async {
+    final db = await database;
+    
+    // حذف خودکار دکل‌ها به دلیل CASCADE
+    return await db.delete(
+      'cell_fingerprints',
+      where: 'fingerprint_id = ?',
+      whereArgs: [fingerprintId],
+    );
+  }
+
+  /// تعداد کل اثرانگشت‌های سلولی
+  Future<int> getCellFingerprintCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM cell_fingerprints');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// پاک کردن تمام اثرانگشت‌های سلولی
+  Future<void> clearAllCellFingerprints() async {
+    final db = await database;
+    await db.delete('cell_towers');
+    await db.delete('cell_fingerprints');
+    debugPrint('All cell fingerprints cleared');
   }
 }
 
