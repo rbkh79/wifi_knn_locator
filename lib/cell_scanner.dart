@@ -2,36 +2,30 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:telephony/telephony.dart';
 import 'data_model.dart';
 import 'utils/privacy_utils.dart';
 
 /// ماژول اسکن دکل‌های مخابراتی (BTS)
 ///
-/// از بسته telephony (نسخه 0.2.0) برای درخواست مجوز READ_PHONE_STATE استفاده می‌کند.
+/// مجوز READ_PHONE_STATE با permission_handler درخواست می‌شود.
 /// داده دکل‌های فعال از Android TelephonyManager (MethodChannel) خوانده می‌شود.
 /// خروجی: cellId, lac, tac, signalStrength, mcc, mnc
 class CellScanner {
   static const MethodChannel _channel = MethodChannel('wifi_knn_locator/cell_info');
 
-  static Telephony get _telephony => Telephony.instance;
-
-  /// درخواست مجوز READ_PHONE_STATE با بسته telephony
+  /// درخواست مجوز READ_PHONE_STATE (اندروید)
   static Future<bool> requestPermissions() async {
     if (!Platform.isAndroid) return true;
     try {
-      final granted = await _telephony.requestPhonePermissions;
-      if (granted == true) return true;
-      final phoneStatus = await Permission.phone.request();
-      return phoneStatus.isGranted;
+      final status = await Permission.phone.request();
+      return status.isGranted;
     } catch (e) {
       debugPrint('CellScanner: Error requesting phone permission: $e');
-      final phoneStatus = await Permission.phone.request();
-      return phoneStatus.isGranted;
+      return false;
     }
   }
 
-  /// بررسی وضعیت مجوز (permission_handler برای سازگاری اندروید)
+  /// بررسی وضعیت مجوز
   static Future<bool> checkPermissions() async {
     if (!Platform.isAndroid) return false;
     final status = await Permission.phone.status;
@@ -40,7 +34,7 @@ class CellScanner {
 
   /// اجرای اسکن دکل‌های مخابراتی
   ///
-  /// 1. بررسی/درخواست مجوز با telephony
+  /// 1. بررسی/درخواست مجوز READ_PHONE_STATE
   /// 2. فراخوانی native برای getCellInfo
   /// 3. خروجی: CellScanResult با cellId, lac, tac, signalStrength, mcc, mnc
   /// 4. در صورت عدم پشتیبانی دستگاه یا خطا، نتیجه خالی برمی‌گردد (بدون پرتاب خطا)
