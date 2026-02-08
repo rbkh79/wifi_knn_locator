@@ -1,19 +1,8 @@
-/// سرویس یکپارچه مکان‌یابی (Unified Localization Service)
-/// 
-/// این سرویس به عنوان رابط اصلی برای مکان‌یابی Indoor و Outdoor عمل می‌کند.
-/// به صورت خودکار تصمیم می‌گیرد که از کدام روش استفاده کند.
-/// 
-/// عملکرد:
-/// - تشخیص خودکار محیط (Indoor/Outdoor)
-/// - انتخاب بهترین روش مکان‌یابی
-/// - ترکیب نتایج در صورت امکان
-/// - مدیریت مسیر حرکت
-/// - پیش‌بینی مسیر آینده
-/// 
-/// چرا GPS-Free؟
-/// - تمام روش‌های مکان‌یابی بر اساس سیگنال‌های رادیویی است
-/// - هیچ وابستگی به GPS یا سرویس‌های خارجی ندارد
-/// - حریم خصوصی کامل حفظ می‌شود
+/// سرویس یکپارچه مکان‌یابی GPS-Free با تلفیق وای‌فای + BTS
+///
+/// - تشخیص محیط با در نظر گرفتن داده سلولی (Indoor/Outdoor/Hybrid)
+/// - فیوژن وزن‌دار در حالت Hybrid بر اساس تعداد AP/دکل و قدرت سیگنال
+/// - آستانه‌های هوشمند برای سوئیچ بین محیط‌ها
 import 'package:flutter/foundation.dart';
 import '../data_model.dart';
 import '../local_database.dart';
@@ -21,6 +10,14 @@ import 'indoor_localization_service.dart';
 import 'outdoor_localization_service.dart';
 import 'trajectory_service.dart';
 import 'path_prediction_service.dart';
+
+// آستانه‌های تشخیص محیط
+const int _kMinApForIndoor = 3;
+const double _kMinWifiStrengthForIndoor = 0.25;
+const int _kMinTowersForOutdoor = 1;
+const double _kMinCellStrengthForOutdoor = -110.0; // dBm
+const double _kMinWifiStrengthForHybrid = 0.2;
+const double _kMinCellConfidenceForHybrid = 0.15;
 
 /// نتیجه مکان‌یابی یکپارچه
 class UnifiedLocalizationResult {
@@ -57,92 +54,90 @@ class UnifiedLocalizationService {
         _trajectoryService = TrajectoryService(_database),
         _predictionService = PathPredictionService(_database);
 
-  /// انجام مکان‌یابی یکپارچه
-  /// 
-  /// این متد به صورت خودکار:
-  /// 1. محیط را تشخیص می‌دهد (Indoor/Outdoor)
-  /// 2. بهترین روش مکان‌یابی را انتخاب می‌کند
-  /// 3. در صورت امکان، از هر دو روش استفاده می‌کند (Hybrid)
-  /// 4. مسیر حرکت را به‌روزرسانی می‌کند
-  /// 
-  /// [deviceId]: شناسه دستگاه
-  /// [preferIndoor]: اولویت با Indoor (پیش‌فرض: true)
-  /// 
-  /// Returns: UnifiedLocalizationResult
+  /// انجام مکان‌یابی یکپارچه با تشخیص محیط و فیوژن هوشمند
+  ///
+  /// 1. تشخیص محیط با در نظر گرفتن وای‌فای و داده سلولی
+  /// 2. در Hybrid: وزن وای‌فای = f(تعداد AP، میانگین RSSI)، وزن سلولی = f(تعداد دکل، قدرت سیگنال)
+  /// 3. موقعیت نهایی = (موقعیت_وای‌فای×وزن_وای‌فای + موقعیت_سلولی×وزن_سلولی) / مجموع_وزن‌ها
   Future<UnifiedLocalizationResult> performLocalization({
     required String deviceId,
     bool preferIndoor = true,
   }) async {
     try {
-      // انجام مکان‌یابی Indoor و Outdoor به صورت موازی
       final indoorFuture = _indoorService.performIndoorLocalization();
       final outdoorFuture = _outdoorService.performOutdoorLocalization();
-
       final indoorResult = await indoorFuture;
       final outdoorResult = await outdoorFuture;
 
-      // تصمیم‌گیری استراتژی
-      final hasIndoor = indoorResult.isIndoor && indoorResult.isReliable;
-      final hasOutdoor = outdoorResult.isOutdoor && outdoorResult.isReliable;
-
+      final env = _classifyEnvironment(indoorResult, outdoorResult, preferIndoor);
       LocationEstimate? finalEstimate;
-      String environmentType;
       double confidence;
 
-      if (hasIndoor && hasOutdoor) {
-        // حالت Hybrid: استفاده از هر دو
-        environmentType = 'hybrid';
-        
-        // ترکیب نتایج با وزن‌دهی
-        final indoorEst = indoorResult.estimate!;
-        final outdoorEst = outdoorResult.estimate!;
-        
-        // وزن بیشتر برای Indoor (دقت بالاتر)
-        final weight = preferIndoor ? 0.7 : 0.5;
-        final lat = indoorEst.latitude * weight + outdoorEst.latitude * (1 - weight);
-        final lon = indoorEst.longitude * weight + outdoorEst.longitude * (1 - weight);
-        confidence = (indoorEst.confidence * weight + outdoorEst.confidence * (1 - weight))
-            .clamp(0.0, 1.0);
-
-        finalEstimate = LocationEstimate(
-          latitude: lat,
-          longitude: lon,
-          confidence: confidence,
-          zoneLabel: indoorEst.zoneLabel ?? outdoorEst.zoneLabel,
-          nearestNeighbors: indoorEst.nearestNeighbors,
-          averageDistance: (indoorEst.averageDistance + outdoorEst.averageDistance) / 2,
+      if (env == 'hybrid' &&
+          indoorResult.estimate != null &&
+          outdoorResult.estimate != null) {
+        final wWifi = _wifiFusionWeight(
+          indoorResult.accessPointCount,
+          indoorResult.wifiStrength,
         );
-
-        debugPrint('Hybrid localization: Indoor confidence=${indoorEst.confidence.toStringAsFixed(2)}, '
-            'Outdoor confidence=${outdoorEst.confidence.toStringAsFixed(2)}');
-      } else if (hasIndoor) {
-        // فقط Indoor
-        environmentType = 'indoor';
+        final wCell = _cellFusionWeight(
+          outdoorResult.cellTowerCount,
+          outdoorResult.averageSignalStrength,
+          outdoorResult.estimate!.confidence,
+        );
+        final sumW = wWifi + wCell;
+        if (sumW > 0) {
+          final lat = (indoorResult.estimate!.latitude * wWifi +
+                  outdoorResult.estimate!.latitude * wCell) /
+              sumW;
+          final lon = (indoorResult.estimate!.longitude * wWifi +
+                  outdoorResult.estimate!.longitude * wCell) /
+              sumW;
+          confidence = (indoorResult.estimate!.confidence * wWifi +
+                  outdoorResult.estimate!.confidence * wCell) /
+              sumW;
+          confidence = confidence.clamp(0.0, 1.0);
+          finalEstimate = LocationEstimate(
+            latitude: lat,
+            longitude: lon,
+            confidence: confidence,
+            zoneLabel: indoorResult.estimate!.zoneLabel ??
+                outdoorResult.estimate!.zoneLabel,
+            nearestNeighbors: indoorResult.estimate!.nearestNeighbors,
+            averageDistance: (indoorResult.estimate!.averageDistance +
+                    outdoorResult.estimate!.averageDistance) /
+                2,
+          );
+          debugPrint(
+            'Hybrid fusion: wWifi=${wWifi.toStringAsFixed(2)}, '
+            'wCell=${wCell.toStringAsFixed(2)}, conf=${confidence.toStringAsFixed(2)}',
+          );
+        } else {
+          finalEstimate = preferIndoor ? indoorResult.estimate : outdoorResult.estimate;
+          confidence = finalEstimate?.confidence ?? 0.0;
+        }
+      } else if (env == 'indoor') {
         finalEstimate = indoorResult.estimate;
         confidence = finalEstimate?.confidence ?? 0.0;
-      } else if (hasOutdoor) {
-        // فقط Outdoor
-        environmentType = 'outdoor';
+      } else if (env == 'outdoor') {
         finalEstimate = outdoorResult.estimate;
         confidence = finalEstimate?.confidence ?? 0.0;
       } else {
-        // هیچ کدام
-        environmentType = 'unknown';
+        finalEstimate = null;
         confidence = 0.0;
       }
 
-      // ذخیره در مسیر حرکت
       if (finalEstimate != null && confidence >= 0.3) {
         await _trajectoryService.addTrajectoryPoint(
           estimate: finalEstimate,
           deviceId: deviceId,
-          environmentType: environmentType,
+          environmentType: env,
         );
       }
 
       return UnifiedLocalizationResult(
         estimate: finalEstimate,
-        environmentType: environmentType,
+        environmentType: env,
         confidence: confidence,
         zoneLabel: finalEstimate?.zoneLabel,
         indoorResult: indoorResult,
@@ -155,6 +150,42 @@ class UnifiedLocalizationService {
         confidence: 0.0,
       );
     }
+  }
+
+  /// تشخیص محیط با در نظر گرفتن وای‌فای و داده سلولی
+  String _classifyEnvironment(
+    IndoorLocalizationResult indoorResult,
+    OutdoorLocalizationResult outdoorResult,
+    bool preferIndoor,
+  ) {
+    final hasIndoor = indoorResult.isIndoor && indoorResult.isReliable;
+    final hasOutdoor = outdoorResult.isOutdoor && outdoorResult.isReliable;
+    final wifiOk = indoorResult.accessPointCount >= _kMinApForIndoor &&
+        indoorResult.wifiStrength >= _kMinWifiStrengthForHybrid;
+    final cellOk = outdoorResult.cellTowerCount >= _kMinTowersForOutdoor &&
+        outdoorResult.averageSignalStrength >= _kMinCellStrengthForOutdoor &&
+        (outdoorResult.estimate?.confidence ?? 0) >= _kMinCellConfidenceForHybrid;
+
+    if (hasIndoor && hasOutdoor && wifiOk && cellOk) return 'hybrid';
+    if (hasIndoor) return 'indoor';
+    if (hasOutdoor) return 'outdoor';
+    if (indoorResult.accessPointCount >= _kMinApForIndoor &&
+        indoorResult.wifiStrength >= _kMinWifiStrengthForIndoor) return 'indoor';
+    if (outdoorResult.cellTowerCount >= _kMinTowersForOutdoor) return 'outdoor';
+    return 'unknown';
+  }
+
+  /// وزن وای‌فای برای فیوژن: تابعی از تعداد AP و میانگین RSSI (قدرت)
+  double _wifiFusionWeight(int apCount, double wifiStrength) {
+    final apFactor = (apCount / 6.0).clamp(0.0, 1.0);
+    return (apFactor * 0.4 + wifiStrength * 0.6).clamp(0.0, 1.0);
+  }
+
+  /// وزن سلولی برای فیوژن: تابعی از تعداد دکل و قدرت سیگنال
+  double _cellFusionWeight(int towerCount, double avgSignalDbm, double cellConfidence) {
+    final countFactor = (towerCount / 5.0).clamp(0.0, 1.0);
+    final signalFactor = ((avgSignalDbm + 120) / 70).clamp(0.0, 1.0);
+    return (countFactor * 0.3 + signalFactor * 0.4 + cellConfidence * 0.3).clamp(0.0, 1.0);
   }
 
   /// پیش‌بینی مسیر آینده

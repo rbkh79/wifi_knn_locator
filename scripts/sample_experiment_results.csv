@@ -1,0 +1,7 @@
+lat_true,lon_true,lat_est,lon_est,method,point_id,sample_id
+36.2974,59.6052,36.2975,59.6051,wifi_only,entrance_1,1
+36.2974,59.6052,36.2976,59.6050,hybrid,entrance_1,1
+36.2974,59.6052,36.2973,59.6053,wifi_only,entrance_1,2
+36.2974,59.6052,36.2974,59.6052,hybrid,entrance_1,2
+36.2974,59.6052,36.2975,59.6052,wifi_only,entrance_1,3
+36.2974,59.6052,36.2974,59.6051,hybrid,entrance_1,3

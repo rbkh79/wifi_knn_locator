@@ -520,4 +520,3 @@ class HybridFingerprintEntry {
   /// بررسی اینکه آیا اثرانگشت ترکیبی است
   bool get isHybrid => hasWifi && hasCell;
 }
-
