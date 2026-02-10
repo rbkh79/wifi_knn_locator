@@ -320,9 +320,7 @@ class CellTowerInfo {
   final int? signalStrength; // قدرت سیگنال (dBm)
   final String? networkType; // نوع شبکه (GSM, WCDMA, LTE, NR)
   final int? psc; // Primary Scrambling Code (3G)
-  final int? pci; // Physical Cell ID (4G/5G)
-
-  CellTowerInfo({
+  final int? pci; // Physical Cell ID (4G/5G)  CellTowerInfo({
     this.cellId,
     this.lac,
     this.tac,
