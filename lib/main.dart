@@ -31,6 +31,8 @@ Tasks for Copilot:
 Generate the updated code starting from here:
 */
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_map/flutter_map.dart';
