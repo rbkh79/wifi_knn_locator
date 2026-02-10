@@ -14,6 +14,7 @@ dependencies:
   url_launcher: ^6.3.1   # <-- این خط رو تغییر بده
   csv: ^6.0.0
   wifi_scan: ^0.4.1+2
+  sensors_plus: ^6.1.2
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   sqflite: ^2.3.0

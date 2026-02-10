@@ -57,6 +57,7 @@ import 'services/map_reference_point_picker.dart';
 import 'services/unified_localization_service.dart';
 import 'services/trajectory_service.dart';
 import 'services/path_prediction_service.dart';
+import 'services/motion_detection_service.dart';
 import 'widgets/environment_indicator.dart';
 import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
@@ -143,6 +144,11 @@ class _HomePageState extends State<HomePage> {
   
   // Location confidence state
   ConfidenceResult? _confidenceResult;
+
+  // Motion-aware scanning
+  late final MotionDetectionService _motionService;
+  StreamSubscription<MotionState>? _motionSub;
+  Timer? _autoScanTimer;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -176,6 +182,7 @@ class _HomePageState extends State<HomePage> {
     _pathAnalysisService = PathAnalysisService(_database);
     _locationConfidenceService = LocationConfidenceService(_database);
     _unifiedLocalizationService = UnifiedLocalizationService(_database);
+    _motionService = MotionDetectionService();
     
     // دریافت شناسه دستگاه
     _deviceId = await PrivacyUtils.getDeviceId();
@@ -190,11 +197,40 @@ class _HomePageState extends State<HomePage> {
     _updateFingerprintCount();
     await _loadFingerprintEntries();
     
+    // شروع سرویس تشخیص حرکت
+    _motionService.start();
+    _motionSub =
+        _motionService.motionStateStream.listen(_onMotionStateChanged);
+
     // بارگذاری مسیر کاربر
     await _loadUserPath();
     await _loadContextAndSessions();
     
     setState(() {});
+  }
+
+  void _onMotionStateChanged(MotionState state) {
+    if (!mounted) return;
+    setState(() {
+      // فقط برای نمایش احتمالی در UI، اگر خواستید
+    });
+
+    // توقف تایمر قبلی
+    _autoScanTimer?.cancel();
+
+    final interval = _motionService.recommendedScanInterval;
+
+    // توقف ناگهانی: اسکن فوری برای ثبت موقعیت دقیق
+    if (_motionService.justStopped && !_loading) {
+      _performScan();
+    }
+
+    // تایمر جدید بر اساس حالت حرکت
+    _autoScanTimer = Timer.periodic(interval, (_) {
+      if (!_loading) {
+        _performScan();
+      }
+    });
   }
 
   /// بارگذاری مسیر کاربر برای نمایش روی نقشه
@@ -906,6 +942,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _autoScanTimer?.cancel();
+    _motionSub?.cancel();
+    _motionService.dispose();
     _latController.dispose();
     _lonController.dispose();
     _zoneController.dispose();

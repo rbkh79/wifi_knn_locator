@@ -41,12 +41,17 @@ class MainActivity: FlutterActivity() {
 
         val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        // بررسی مجوز
+        // بررسی مجوز Location (برای Android 10+ الزامی است)
         if (ActivityCompat.checkSelfPermission(
                 this,
-                Manifest.permission.READ_PHONE_STATE
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
+            Log.w("MainActivity", "Location permission not granted for cell info")
             return null
         }
 
