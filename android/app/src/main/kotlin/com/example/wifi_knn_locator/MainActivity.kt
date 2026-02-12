@@ -169,8 +169,9 @@ class MainActivity: FlutterActivity() {
                     mapOf(
                         "cellId" to try { cellIdentity.nci } catch (e: Exception) { null },
                         "tac" to try { cellIdentity.tac } catch (e: Exception) { null },
-                        "mcc" to try { cellIdentity.mcc } catch (e: Exception) { null },
-                        "mnc" to try { cellIdentity.mnc } catch (e: Exception) { null },
+                        // CellIdentityNr exposes MCC/MNC as strings (mccString/mncString)
+                        "mcc" to try { cellIdentity.mccString?.toInt() } catch (e: Exception) { null },
+                        "mnc" to try { cellIdentity.mncString?.toInt() } catch (e: Exception) { null },
                         "signalStrength" to try { cellSignalStrength.dbm } catch (e: Exception) { null },
                         "networkType" to "NR",
                         "pci" to try { cellIdentity.pci } catch (e: Exception) { null }
