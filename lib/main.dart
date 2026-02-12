@@ -64,6 +64,7 @@ import 'widgets/environment_indicator.dart';
 import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
 import 'utils/privacy_utils.dart';
+import 'utils/permission_utils.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
 
@@ -650,6 +651,42 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       debugPrint('Error storing raw scan: $e');
     }
+  }
+
+  Future<void> _ensureCellPermissionsAndScan() async {
+    // Request Location + Phone permissions; if granted perform a scan.
+    final granted = await PermissionUtils.requestLocationAndPhonePermissions();
+    if (!granted) {
+      // Show rationale and option to open settings
+      final open = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('دسترسی مورد نیاز'),
+          content: const Text(
+              'برای شناسایی دکل مخابراتی و اپراتور، دسترسی به مکان و وضعیت تلفن لازم است. لطفاً مجوزها را فعال کنید.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(c).pop(false),
+              child: const Text('بی‌خیال'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(c).pop(true);
+              },
+              child: const Text('باز کردن تنظیمات'),
+            ),
+          ],
+        ),
+      );
+
+      if (open == true) {
+        await PermissionUtils.openAppSettingsIfNeeded(context);
+      }
+      return;
+    }
+
+    // Permissions granted - trigger a scan to refresh cell info
+    await _performScan();
   }
 
   /// مدیریت کلیک روی نقشه برای اضافه کردن نقطه مرجع
@@ -1786,6 +1823,56 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                 // نمایش هشدار عدم اطمینان
+                // نمایش اطلاعات اپراتور و دکمه مجوز اگر موجود نباشد
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.sim_card, color: Colors.blue.shade700),
+                                const SizedBox(width: 8),
+                                const Text('اپراتور شبکه', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _lastCellScan?.servingCell?.operatorName ?? 'نامشخص',
+                              style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
+                            ),
+                            if (_lastCellScan == null || _lastCellScan?.servingCell == null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'برای دریافت اطلاعات دکل‌ها، ممکن است نیاز به فعال‌سازی مجوزها و سرویس موقعیت داشته باشید.',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _ensureCellPermissionsAndScan,
+                      child: const Text('درخواست مجوز / اسکن'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
                 if (_confidenceResult != null && (!_confidenceResult!.isReliable || _confidenceResult!.isNewLocation)) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
