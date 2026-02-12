@@ -8,6 +8,8 @@ import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoWcdma
+import android.telephony.CellInfoNr
+import android.telephony.CellIdentityNr
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -159,9 +161,22 @@ class MainActivity: FlutterActivity() {
                         "networkType" to "GSM"
                     )
                 }
+                is CellInfoNr -> {
+                    // 5G NR support
+                    val cellIdentity = try { cellInfo.cellIdentity as CellIdentityNr } catch (ex: Exception) { null }
+                    val cellSignalStrength = cellInfo.cellSignalStrength
+                    if (cellIdentity == null) return null
+                    mapOf(
+                        "cellId" to try { cellIdentity.nci } catch (e: Exception) { null },
+                        "tac" to try { cellIdentity.tac } catch (e: Exception) { null },
+                        "mcc" to try { cellIdentity.mcc } catch (e: Exception) { null },
+                        "mnc" to try { cellIdentity.mnc } catch (e: Exception) { null },
+                        "signalStrength" to try { cellSignalStrength.dbm } catch (e: Exception) { null },
+                        "networkType" to "NR",
+                        "pci" to try { cellIdentity.pci } catch (e: Exception) { null }
+                    )
+                }
                 else -> {
-                    // برای CellInfoNr و سایر انواع، فعلاً پشتیبانی نمی‌کنیم
-                    // چون APIهای آنها در همه نسخه‌ها موجود نیست
                     null
                 }
             }

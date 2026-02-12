@@ -20,12 +20,21 @@ class CellScanner {
   static Future<bool> requestPermissions() async {
     if (!Platform.isAndroid) return true;
     try {
+      // Request fine location first (required on Android 10+ for cell info)
       final locStatus = await Permission.location.request();
+
+      // Request phone state to read operator/MCC/MNC
       final phoneStatus = await Permission.phone.request();
+
+      // If any permission is permanently denied, we cannot proceed programmatically
+      if (locStatus.isPermanentlyDenied || phoneStatus.isPermanentlyDenied) {
+        debugPrint('CellScanner: Permission permanently denied; ask user to open app settings');
+        return false;
+      }
+
       final granted = locStatus.isGranted && phoneStatus.isGranted;
       if (!granted) {
-        debugPrint(
-            'CellScanner: Location/Phone permissions not granted for cell scanning');
+        debugPrint('CellScanner: Location/Phone permissions not granted for cell scanning');
       }
       return granted;
     } catch (e) {

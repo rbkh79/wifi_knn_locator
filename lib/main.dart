@@ -151,6 +151,10 @@ class _HomePageState extends State<HomePage> {
   late final MotionDetectionService _motionService;
   StreamSubscription<MotionState>? _motionSub;
   Timer? _autoScanTimer;
+  MotionState _motionState = MotionState.unknown;
+
+  // آخرین اسکن سلولی برای نمایش اپراتور
+  CellScanResult? _lastCellScan;
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -214,7 +218,7 @@ class _HomePageState extends State<HomePage> {
   void _onMotionStateChanged(MotionState state) {
     if (!mounted) return;
     setState(() {
-      // فقط برای نمایش احتمالی در UI، اگر خواستید
+      _motionState = state;
     });
 
     // توقف تایمر قبلی
@@ -424,6 +428,7 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _currentScanResult = scanResult;
+        _lastCellScan = cellScanResult;
         _expandedSignalResults = true; // باز کردن بخش نتایج
       });
 
