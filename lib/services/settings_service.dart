@@ -45,6 +45,74 @@ class SettingsService {
     await _prefs?.setString(AppConfig.userIdKey, uuid);
     return uuid;
   }
+
+  // --- New settings used by modern UI ---
+  static const _kContinuousScanKey = 'continuous_scan';
+  static const _kScanIntervalKey = 'scan_interval_seconds';
+  static const _kMotionAwareKey = 'motion_aware_scanning';
+  static const _kHashMacKey = 'hash_device_mac';
+  static const _kStoreLocalOnlyKey = 'store_local_only';
+  static const _kLocalizationStrategyKey = 'localization_strategy';
+
+  static Future<bool> getContinuousScan() async {
+    await init();
+    return _prefs?.getBool(_kContinuousScanKey) ?? false;
+  }
+
+  static Future<bool> setContinuousScan(bool v) async {
+    await init();
+    return _prefs?.setBool(_kContinuousScanKey, v) ?? false;
+  }
+
+  static Future<int> getScanIntervalSeconds() async {
+    await init();
+    return _prefs?.getInt(_kScanIntervalKey) ?? AppConfig.scanInterval.inSeconds;
+  }
+
+  static Future<bool> setScanIntervalSeconds(int s) async {
+    await init();
+    return _prefs?.setInt(_kScanIntervalKey, s) ?? false;
+  }
+
+  static Future<bool> getUseMotionAwareScanning() async {
+    await init();
+    return _prefs?.getBool(_kMotionAwareKey) ?? true;
+  }
+
+  static Future<bool> setUseMotionAwareScanning(bool v) async {
+    await init();
+    return _prefs?.setBool(_kMotionAwareKey, v) ?? false;
+  }
+
+  static Future<bool> getHashDeviceMac() async {
+    await init();
+    return _prefs?.getBool(_kHashMacKey) ?? AppConfig.hashDeviceMac;
+  }
+
+  static Future<bool> setHashDeviceMac(bool v) async {
+    await init();
+    return _prefs?.setBool(_kHashMacKey, v) ?? false;
+  }
+
+  static Future<bool> getStoreLocalOnly() async {
+    await init();
+    return _prefs?.getBool(_kStoreLocalOnlyKey) ?? true;
+  }
+
+  static Future<bool> setStoreLocalOnly(bool v) async {
+    await init();
+    return _prefs?.setBool(_kStoreLocalOnlyKey, v) ?? false;
+  }
+
+  static Future<int> getLocalizationStrategy() async {
+    await init();
+    return _prefs?.getInt(_kLocalizationStrategyKey) ?? 1;
+  }
+
+  static Future<bool> setLocalizationStrategy(int v) async {
+    await init();
+    return _prefs?.setInt(_kLocalizationStrategyKey, v) ?? false;
+  }
 }
 
 

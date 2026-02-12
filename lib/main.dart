@@ -63,6 +63,10 @@ import 'services/motion_detection_service.dart';
 import 'widgets/environment_indicator.dart';
 import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
+import 'ui/app_theme.dart';
+import 'ui/settings_screen.dart';
+import 'ui/signal_results_screen.dart';
+import 'ui/modern_home.dart';
 import 'utils/privacy_utils.dart';
 import 'utils/permission_utils.dart';
 import 'package:uuid/uuid.dart';
@@ -80,16 +84,15 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WiFi KNN Locator',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
-        ),
-      ),
-      home: const HomePage(),
+      title: 'موقعیت‌یابی هوشمند',
+      theme: AppTheme.lightTheme(),
+      routes: {
+        '/': (ctx) => const ModernHome(),
+        '/modern': (ctx) => const ModernHome(),
+        '/settings': (ctx) => const SettingsScreen(),
+        '/signals': (ctx) => const SignalResultsScreen(),
+      },
+      initialRoute: '/',
       debugShowCheckedModeBanner: false,
     );
   }
