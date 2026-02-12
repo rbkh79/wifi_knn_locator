@@ -61,7 +61,8 @@ class SettingsService {
 
   static Future<bool> setContinuousScan(bool v) async {
     await init();
-    return _prefs?.setBool(_kContinuousScanKey, v) ?? false;
+    if (_prefs == null) return false;
+    return await _prefs!.setBool(_kContinuousScanKey, v);
   }
 
   static Future<int> getScanIntervalSeconds() async {
@@ -71,7 +72,8 @@ class SettingsService {
 
   static Future<bool> setScanIntervalSeconds(int s) async {
     await init();
-    return _prefs?.setInt(_kScanIntervalKey, s) ?? false;
+    if (_prefs == null) return false;
+    return await _prefs!.setInt(_kScanIntervalKey, s);
   }
 
   static Future<bool> getUseMotionAwareScanning() async {
@@ -81,7 +83,8 @@ class SettingsService {
 
   static Future<bool> setUseMotionAwareScanning(bool v) async {
     await init();
-    return _prefs?.setBool(_kMotionAwareKey, v) ?? false;
+    if (_prefs == null) return false;
+    return await _prefs!.setBool(_kMotionAwareKey, v);
   }
 
   static Future<bool> getHashDeviceMac() async {
@@ -91,7 +94,8 @@ class SettingsService {
 
   static Future<bool> setHashDeviceMac(bool v) async {
     await init();
-    return _prefs?.setBool(_kHashMacKey, v) ?? false;
+    if (_prefs == null) return false;
+    return await _prefs!.setBool(_kHashMacKey, v);
   }
 
   static Future<bool> getStoreLocalOnly() async {
@@ -101,7 +105,8 @@ class SettingsService {
 
   static Future<bool> setStoreLocalOnly(bool v) async {
     await init();
-    return _prefs?.setBool(_kStoreLocalOnlyKey, v) ?? false;
+    if (_prefs == null) return false;
+    return await _prefs!.setBool(_kStoreLocalOnlyKey, v);
   }
 
   static Future<int> getLocalizationStrategy() async {
@@ -111,7 +116,8 @@ class SettingsService {
 
   static Future<bool> setLocalizationStrategy(int v) async {
     await init();
-    return _prefs?.setInt(_kLocalizationStrategyKey, v) ?? false;
+    if (_prefs == null) return false;
+    return await _prefs!.setInt(_kLocalizationStrategyKey, v);
   }
 }
 

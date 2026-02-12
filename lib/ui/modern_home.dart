@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+// Map rendering simplified to avoid flutter_map API mismatch during build.
+// If you want a full map, re-add `flutter_map` with compatible version and update code.
 import '../ui/app_theme.dart';
 import '../config.dart';
 import '../wifi_scanner.dart';
@@ -24,7 +24,9 @@ class _ModernHomeState extends State<ModernHome> {
   bool _loading = false;
   WifiScanResult? _lastWifi;
   CellScanResult? _lastCell;
-  LatLng _mapCenter = LatLng(AppConfig.defaultLatitude, AppConfig.defaultLongitude);
+  // fallback map center coords (used only for display text)
+  final double _mapLat = AppConfig.defaultLatitude;
+  final double _mapLng = AppConfig.defaultLongitude;
 
   Color _envColor() {
     switch (_env) {
@@ -131,31 +133,27 @@ class _ModernHomeState extends State<ModernHome> {
             ),
           ),
 
-          // Map
+          // Map placeholder (flutter_map caused API mismatch in build).
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Card(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: FlutterMap(
-                    options: MapOptions(
-                      center: _mapCenter,
-                      zoom: AppConfig.defaultMapZoom,
+                  child: Container(
+                    color: Colors.grey.shade100,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.map, size: 56, color: Colors.grey),
+                          const SizedBox(height: 8),
+                          Text('نقشه موقتاً در دسترس نیست', style: TextStyle(color: Colors.grey.shade700)),
+                          const SizedBox(height: 6),
+                          Text('موقعیت مرکزی: ' + '$_mapLat, $_mapLng', style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
                     ),
-                    children: [
-                      TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
-                      MarkerLayer(markers: [
-                        // Current location marker (placeholder)
-                        Marker(
-                          point: _mapCenter,
-                          width: 36,
-                          height: 36,
-                          builder: (c) => const Icon(Icons.my_location, color: Colors.blue, size: 32),
-                        ),
-                        // Reference markers (if in training, we could show green ones) - omitted here
-                      ])
-                    ],
                   ),
                 ),
               ),

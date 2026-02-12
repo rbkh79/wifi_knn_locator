@@ -21,16 +21,11 @@ class AppTheme {
         backgroundColor: primary,
         foregroundColor: Colors.white,
       ),
-      cardTheme: CardTheme(
-        color: Colors.white,
-        elevation: 2,
-        shadowColor: cardShadow,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+      // keep card theme default (avoid SDK mismatches)
       textTheme: const TextTheme(
-        headline6: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        subtitle1: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-        bodyText2: TextStyle(fontSize: 14),
+        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        bodyMedium: TextStyle(fontSize: 14),
       ),
     );
   }
