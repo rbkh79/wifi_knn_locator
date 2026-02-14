@@ -6,7 +6,11 @@ import '../config.dart';
 import '../wifi_scanner.dart';
 import '../cell_scanner.dart';
 import '../services/location_service.dart';
+import '../services/unified_localization_service.dart';
 import '../data_model.dart';
+import '../local_database.dart';
+import '../widgets/position_display_panel.dart';
+import '../widgets/position_marker.dart';
 
 class ModernHome extends StatefulWidget {
   const ModernHome({Key? key}) : super(key: key);
@@ -24,11 +28,36 @@ class _ModernHomeState extends State<ModernHome> {
   bool _loading = false;
   WifiScanResult? _lastWifi;
   CellScanResult? _lastCell;
+  LocationEstimate? _currentPosition;
   // fallback map center coords (used only for display text)
   final double _mapLat = AppConfig.defaultLatitude;
   final double _mapLng = AppConfig.defaultLongitude;
+  
+  // Integration: UnifiedLocalizationService for position estimation
+  late UnifiedLocalizationService _localizationService;
 
-  Color _envColor() {
+  @override
+  void initState() {
+    super.initState();
+    // Integration: Initialize UnifiedLocalizationService
+    _localizationService = UnifiedLocalizationService(
+      LocalDatabase.instance,
+    );
+  }
+
+  EnvironmentType _mapEnvToWidget() {
+    switch (_env) {
+      case EnvState.indoor:
+        return EnvironmentType.indoor;
+      case EnvState.outdoor:
+        return EnvironmentType.outdoor;
+      case EnvState.hybrid:
+        return EnvironmentType.hybrid;
+      case EnvState.unknown:
+      default:
+        return EnvironmentType.unknown;
+    }
+  }
     switch (_env) {
       case EnvState.indoor:
         return const Color(0xFF4285F4);
@@ -92,6 +121,22 @@ class _ModernHomeState extends State<ModernHome> {
   Future<void> _startScanAll() async {
     await _scanWifi();
     await _scanCell();
+    
+    // Integration: Perform unified localization after scans
+    try {
+      final result = await _localizationService.performLocalization(
+        deviceId: 'user-device',
+        preferIndoor: _env == EnvState.indoor,
+      );
+      
+      if (result.estimate != null && result.isReliable) {
+        setState(() {
+          _currentPosition = result.estimate;
+        });
+      }
+    } catch (e) {
+      debugPrint('Localization error: $e');
+    }
   }
 
   void _evaluateEnv() {
@@ -128,36 +173,84 @@ class _ModernHomeState extends State<ModernHome> {
               children: [
                 Icon(Icons.place, color: Colors.white),
                 const SizedBox(width: 8),
-                Text(_envLabel(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: Text(
+                    _envLabel(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (_currentPosition != null)
+                  Chip(
+                    label: Text(
+                      '${(_currentPosition!.confidence * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    backgroundColor: _envColor().withOpacity(0.8),
+                    side: const BorderSide(color: Colors.white),
+                  ),
               ],
             ),
           ),
 
-          // Map placeholder (flutter_map caused API mismatch in build).
+          // Map placeholder with position marker overlay
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Card(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    color: Colors.grey.shade100,
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.map, size: 56, color: Colors.grey),
-                          const SizedBox(height: 8),
-                          Text('نقشه موقتاً در دسترس نیست', style: TextStyle(color: Colors.grey.shade700)),
-                          const SizedBox(height: 6),
-                          Text('موقعیت مرکزی: ' + '$_mapLat, $_mapLng', style: const TextStyle(fontSize: 12)),
-                        ],
+                  child: Stack(
+                    children: [
+                      Container(
+                        color: Colors.grey.shade100,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.map, size: 56, color: Colors.grey),
+                              const SizedBox(height: 8),
+                              Text(
+                                'نقشه موقتاً در دسترس نیست',
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'موقعیت مرکزی: $_mapLat, $_mapLng',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      // Integration: Position marker overlay
+                      if (_currentPosition != null)
+                        Center(
+                          child: PositionMarker(
+                            environmentType: _mapEnvToWidget(),
+                            confidence: _currentPosition!.confidence,
+                            showConfidenceRing: true,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
             ),
+          ),
+
+          // Integration: Position display panel
+          PositionDisplayPanel(
+            estimate: _currentPosition,
+            environmentType: _mapEnvToWidget(),
+            onRefresh: _startScanAll,
+            isLoading: _loading,
           ),
 
           // Control panel
@@ -174,19 +267,25 @@ class _ModernHomeState extends State<ModernHome> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _scanWifi,
+                            onPressed: _loading ? null : _scanWifi,
                             icon: const Icon(Icons.wifi),
                             label: const Text('اسکن WiFi'),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade100, foregroundColor: Colors.black),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade100,
+                              foregroundColor: Colors.black,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _scanCell,
+                            onPressed: _loading ? null : _scanCell,
                             icon: const Icon(Icons.wifi_tethering),
                             label: const Text('اسکن دکل'),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade100, foregroundColor: Colors.black),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade100,
+                              foregroundColor: Colors.black,
+                            ),
                           ),
                         ),
                       ],
@@ -196,15 +295,27 @@ class _ModernHomeState extends State<ModernHome> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         ElevatedButton.icon(
-                          onPressed: _startScanAll,
-                          icon: const Icon(Icons.sync),
+                          onPressed: _loading ? null : _startScanAll,
+                          icon: _loading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.sync),
                           label: const Text('شروع اسکن'),
-                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, minimumSize: const Size(180, 48)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            minimumSize: const Size(180, 48),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text('$_wifiCount WiFi • $_cellCount دکل', style: const TextStyle(fontSize: 14)),
+                    Text(
+                      '$_wifiCount WiFi • $_cellCount دکل',
+                      style: const TextStyle(fontSize: 14),
+                    ),
                   ],
                 ),
               ),
