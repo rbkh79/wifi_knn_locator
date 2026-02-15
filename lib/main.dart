@@ -67,6 +67,7 @@ import 'ui/app_theme.dart';
 import 'ui/settings_screen.dart';
 import 'ui/signal_results_screen.dart';
 import 'ui/modern_home.dart';
+import 'ui/single_page_home.dart';
 import 'utils/privacy_utils.dart';
 import 'utils/permission_utils.dart';
 import 'package:uuid/uuid.dart';
@@ -87,8 +88,8 @@ class MyApp extends StatelessWidget {
       title: 'موقعیت‌یابی هوشمند',
       theme: AppTheme.lightTheme(),
       routes: {
-        '/': (ctx) => const ModernHome(),
-        '/modern': (ctx) => const ModernHome(),
+        '/': (ctx) => const SinglePageLocalizationScreen(),
+        '/home': (ctx) => const SinglePageLocalizationScreen(),
         '/settings': (ctx) => const SettingsScreen(),
         '/signals': (ctx) => const SignalResultsScreen(),
       },
