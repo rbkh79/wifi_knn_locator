@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-// Map rendering simplified to avoid flutter_map API mismatch during build.
-// If you want a full map, re-add `flutter_map` with compatible version and update code.
 import '../ui/app_theme.dart';
 import '../config.dart';
 import '../wifi_scanner.dart';
@@ -11,6 +9,7 @@ import '../data_model.dart';
 import '../local_database.dart';
 import '../widgets/position_display_panel.dart';
 import '../widgets/position_marker.dart';
+import '../models/environment_type.dart';
 
 class ModernHome extends StatefulWidget {
   const ModernHome({Key? key}) : super(key: key);
@@ -58,6 +57,8 @@ class _ModernHomeState extends State<ModernHome> {
         return EnvironmentType.unknown;
     }
   }
+
+  Color _envColor() {
     switch (_env) {
       case EnvState.indoor:
         return const Color(0xFF4285F4);
@@ -74,14 +75,14 @@ class _ModernHomeState extends State<ModernHome> {
   String _envLabel() {
     switch (_env) {
       case EnvState.indoor:
-        return 'Indoor';
+        return 'داخلی';
       case EnvState.outdoor:
-        return 'Outdoor';
+        return 'خارجی';
       case EnvState.hybrid:
-        return 'Hybrid';
+        return 'ترکیبی';
       case EnvState.unknown:
       default:
-        return 'Unknown';
+        return 'نامشخص';
     }
   }
 

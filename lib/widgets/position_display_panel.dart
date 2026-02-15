@@ -3,9 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../data_model.dart';
 import '../local_database.dart';
-
-/// نوع محیط (Indoor/Outdoor/Hybrid/Unknown)
-enum EnvironmentType { indoor, outdoor, hybrid, unknown }
+import '../models/environment_type.dart';
 
 /// پنل نمایش موقعیت تخمین‌زده‌شده با مختصات، اطمینان و عملیات
 class PositionDisplayPanel extends StatefulWidget {

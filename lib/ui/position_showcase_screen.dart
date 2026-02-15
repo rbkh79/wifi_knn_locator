@@ -4,6 +4,7 @@ import '../widgets/position_marker.dart';
 import '../widgets/position_display_panel.dart';
 import '../utils/position_animations.dart';
 import '../services/map_controller_service.dart';
+import '../models/environment_type.dart';
 
 /// صفحه نمایشی برای تمام ویژگی‌های موقعیت
 /// این صفحه تمام انیمیشن‌ها، نشانگرها و عملیات موقعیت را نمایش می‌دهد

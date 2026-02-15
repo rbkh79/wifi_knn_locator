@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-
-/// نوع محیط (Indoor/Outdoor/Hybrid/Unknown)
-enum EnvironmentType { indoor, outdoor, hybrid, unknown }
+import '../models/environment_type.dart';
 
 /// نشانگر سفارشی برای نمایش موقعیت تخمین‌زده‌شده بر روی نقشه
 /// استایل نشانگر بر اساس نوع محیط متفاوت است
