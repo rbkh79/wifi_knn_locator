@@ -22,10 +22,12 @@ class AppTheme {
         foregroundColor: Colors.white,
       ),
       // keep card theme default (avoid SDK mismatches)
+      fontFamily: 'Vazir',
       textTheme: const TextTheme(
         titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         bodyMedium: TextStyle(fontSize: 14),
+        labelSmall: TextStyle(fontSize: 12),
       ),
     );
   }

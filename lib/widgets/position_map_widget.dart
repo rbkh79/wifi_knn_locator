@@ -91,37 +91,34 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
   Widget build(BuildContext context) {
     final markers = <Marker>[];
 
-    // نشانگر موقعیت فعلی
-    if (widget.currentPosition != null && _mapCenter != null) {
+    if (widget.currentPosition != null) {
+      final center = LatLng(widget.currentPosition!.latitude, widget.currentPosition!.longitude);
       markers.add(
         Marker(
-          point: _mapCenter!,
-          width: 60,
-          height: 60,
-          child: Stack(
+          point: center,
+          width: 64,
+          height: 64,
+          builder: (context) => Stack(
             alignment: Alignment.center,
             children: [
-              // رادار (اگر در حال اسکن باشد)
               if (widget.isScanning)
                 AnimatedBuilder(
                   animation: _radarController,
                   builder: (context, child) {
+                    final v = _radarController.value;
                     return Container(
-                      width: 100 * (0.5 + _radarController.value * 0.5),
-                      height: 100 * (0.5 + _radarController.value * 0.5),
+                      width: 80 * (0.6 + v * 0.8),
+                      height: 80 * (0.6 + v * 0.8),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: _getMarkerColor().withOpacity(
-                            (1 - _radarController.value) * 0.5,
-                          ),
+                          color: _getMarkerColor().withOpacity((1 - v) * 0.35),
                           width: 2,
                         ),
                       ),
                     );
                   },
                 ),
-              // نشانگر
               PositionMarker(
                 environmentType: widget.environmentType,
                 confidence: widget.currentPosition!.confidence,
@@ -133,68 +130,68 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
       );
     }
 
-    // مسیر حرکت (تاریخچه)
     final polylines = <Polyline>[];
     if (widget.trajectoryHistory != null && widget.trajectoryHistory!.length > 1) {
-      final points = widget.trajectoryHistory!
-          .map((e) => LatLng(e.latitude, e.longitude))
-          .toList();
+      final points = widget.trajectoryHistory!.map((e) => LatLng(e.latitude, e.longitude)).toList();
       polylines.add(
         Polyline(
           points: points,
-          color: _getMarkerColor().withOpacity(0.6),
+          color: _getMarkerColor().withOpacity(0.75),
           strokeWidth: 3,
-          isoDuration: const Duration(milliseconds: 500),
         ),
       );
     }
 
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _mapCenter ?? const LatLng(35.6892, 51.3895),
-        initialZoom: 17,
-        minZoom: 5,
-        maxZoom: 19,
-        onTap: (_, latlng) => widget.onMapTap?.call(latlng),
-      ),
+    // Build map inside a Stack so we can overlay controls reliably
+    return Stack(
       children: [
-        // تایل نقشه (OpenStreetMap)
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.wifi.knn.locator',
-          maxNativeZoom: 19,
-          tileProvider: NetworkTileProvider(),
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _mapCenter ?? const LatLng(35.6892, 51.3895),
+            initialZoom: 17,
+            minZoom: 5,
+            maxZoom: 19,
+            onTap: (tapPos, latlng) => widget.onMapTap?.call(latlng),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.wifi.knn.locator',
+              maxNativeZoom: 19,
+            ),
+            if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+            if (markers.isNotEmpty) MarkerLayer(markers: markers),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6)],
+                ),
+                child: const Text('© OpenStreetMap contributors', style: TextStyle(fontSize: 10)),
+              ),
+            ),
+          ],
         ),
 
-        // خطوط مسیر
-        PolylineLayer(polylines: polylines),
-
-        // نشانگرها
-        MarkerLayer(markers: markers),
-
-        // کنترل‌های نقشه
-        SimpleAttributionWidget(
-          source: const Text('© OpenStreetMap contributors'),
-        ),
-      ],
-      nonRotatedLayers: [
-        // دکمه مرکزیابی
+        // Center button
         Positioned(
           right: 16,
           bottom: 80,
           child: FloatingActionButton(
             mini: true,
             onPressed: () {
-              if (_mapCenter != null) {
-                _mapController.move(_mapCenter!, 17);
-              }
+              if (_mapCenter != null) _mapController.move(_mapCenter!, 17);
             },
             child: const Icon(Icons.my_location),
           ),
         ),
 
-        // مقیاس نقشه
+        // Scale hint
         Positioned(
           left: 16,
           top: 16,
@@ -202,33 +199,18 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 4,
-                ),
-              ],
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6)],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'مقیاس نقشه',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
+                Text('مقیاس نقشه', style: Theme.of(context).textTheme.labelSmall),
                 const SizedBox(height: 4),
-                Container(
-                  width: 50,
-                  height: 2,
-                  color: Colors.black,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '~500m',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
+                Container(width: 50, height: 2, color: Colors.black),
+                const SizedBox(height: 4),
+                Text('~500m', style: Theme.of(context).textTheme.labelSmall),
               ],
             ),
           ),
