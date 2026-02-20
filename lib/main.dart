@@ -97,16 +97,6 @@ class MyApp extends StatelessWidget {
       },
     );
   }
-}
-        '/': (ctx) => const SinglePageLocalizationScreen(),
-        '/home': (ctx) => const SinglePageLocalizationScreen(),
-        '/settings': (ctx) => const SettingsScreen(),
-        '/signals': (ctx) => const SignalResultsScreen(),
-      },
-      initialRoute: '/',
-      debugShowCheckedModeBanner: false,
-
-class _HomePageState extends State<HomePage> {
   // State variables
   bool _loading = false;
   bool _isTrainingMode = false;
