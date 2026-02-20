@@ -79,24 +79,14 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class MyApp extends StatefulWidget {
+  MyApp({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'wifi_knn_locator',
-      theme: AppTheme.lightTheme(),
-      home: const SinglePageLocalizationScreen(),
-      routes: {
-        '/home': (c) => const SinglePageLocalizationScreen(),
-        '/modern': (c) => const ModernHome(),
-        '/settings': (c) => const SettingsScreen(),
-        '/signals': (c) => const SignalResultsScreen(),
-      },
-    );
-  }
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
   // State variables
   bool _loading = false;
   bool _isTrainingMode = false;
