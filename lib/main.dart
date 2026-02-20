@@ -98,16 +98,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'موقعیت‌یابی هوشمند',
-      theme: AppTheme.lightTheme(),
-      routes: {
         '/': (ctx) => const SinglePageLocalizationScreen(),
         '/home': (ctx) => const SinglePageLocalizationScreen(),
         '/settings': (ctx) => const SettingsScreen(),

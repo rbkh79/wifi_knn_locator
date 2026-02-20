@@ -73,7 +73,7 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
           ),
           child: ListView(
             controller: scrollController,
-            padding: const EdgeInsets.fromLTRWH(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             children: [
               // گیره بالا
               Center(
@@ -196,7 +196,7 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
           ),
           child: ListView(
             controller: scrollController,
-            padding: const EdgeInsets.fromLTRWH(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             children: [
               Center(
                 child: Container(

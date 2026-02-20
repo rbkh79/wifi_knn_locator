@@ -98,7 +98,7 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
           point: center,
           width: 64,
           height: 64,
-          builder: (context) => Stack(
+          child: Stack(
             alignment: Alignment.center,
             children: [
               if (widget.isScanning)
