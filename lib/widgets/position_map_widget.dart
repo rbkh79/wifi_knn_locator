@@ -33,6 +33,7 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
   late MapController _mapController;
   late AnimationController _radarController;
   LatLng? _mapCenter;
+  double _currentZoom = 17;
 
   @override
   void initState() {
@@ -76,7 +77,8 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
         widget.currentPosition!.latitude,
         widget.currentPosition!.longitude,
       );
-      _mapController.move(_mapCenter!, 17);
+      _currentZoom = 17;
+      _mapController.move(_mapCenter!, _currentZoom);
     }
   }
 
@@ -186,7 +188,8 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
             mini: true,
             onPressed: () {
               if (_mapCenter != null) {
-                _mapController.move(_mapCenter!, 17);
+                _currentZoom = 17;
+                _mapController.move(_mapCenter!, _currentZoom);
               }
               widget.onCenterPressed?.call();
             },
@@ -205,8 +208,9 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
                 heroTag: 'zoom_in',
                 mini: true,
                 onPressed: () {
-                  final zoom = _mapController.zoom + 1;
-                  _mapController.move(_mapController.center, zoom);
+                  if (_mapCenter == null) return;
+                  _currentZoom = (_currentZoom + 1).clamp(5, 19).toDouble();
+                  _mapController.move(_mapCenter!, _currentZoom);
                 },
                 child: const Icon(Icons.add),
               ),
@@ -215,8 +219,9 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
                 heroTag: 'zoom_out',
                 mini: true,
                 onPressed: () {
-                  final zoom = _mapController.zoom - 1;
-                  _mapController.move(_mapController.center, zoom);
+                  if (_mapCenter == null) return;
+                  _currentZoom = (_currentZoom - 1).clamp(5, 19).toDouble();
+                  _mapController.move(_mapCenter!, _currentZoom);
                 },
                 child: const Icon(Icons.remove),
               ),
