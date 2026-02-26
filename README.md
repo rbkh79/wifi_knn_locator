@@ -1,16 +1,18 @@
 # WiFi KNN Locator
 
-A Flutter mobile application for indoor localization using Wi-Fi (RSSI + MAC) and K-Nearest Neighbors (KNN) algorithm.
+A Flutter mobile application for unified indoor/outdoor/hybrid localization using Wi‑Fi (RSSI + MAC) and optionally cellular tower data, powered by a K-Nearest Neighbors (KNN) algorithm.
 
 ## Features
 
-- ✅ Wi-Fi–only scanning (BSSID, RSSI, frequency, timestamp) – بدون استفاده از IMU
-- ✅ Local fingerprint database + training mode
+- ✅ Wi‑Fi scanning (BSSID, RSSI, frequency, timestamp) – no IMU required
+- ✅ Cellular tower scanner (MCC/MNC/PCI/TAC/NCI) for outdoor positioning
+- ✅ Unified localization: automatically selects indoor/outdoor/hybrid mode
+- ✅ Local fingerprint database with training mode & adaptive K
 - ✅ Persistent per-user UUID stored on device (no backend needed)
-- ✅ Automatic logging of every Wi-Fi scan & KNN estimate در SQLite
-- ✅ Indoor localization via KNN fingerprinting + confidence scoring
-- ✅ Movement prediction (Markov chain) based on location history
-- ✅ Interactive map: add reference tags by tapping (data captured automatically)
+- ✅ Automatic logging of every scan & KNN estimate in SQLite
+- ✅ Indoor/outdoor movement prediction (Markov chain) based on history
+- ✅ Trajectory tracking and path prediction on map
+- ✅ Interactive map: add reference tags by tapping (coordinates saved)
 - ✅ Privacy: hashed identifiers, MAC masking, transparency panel
 - ✅ CLI-friendly workflow (Flutter SDK + terminal commands only)
 
@@ -22,14 +24,21 @@ A Flutter mobile application for indoor localization using Wi-Fi (RSSI + MAC) an
 lib/
 ├── config.dart                 # Configurable parameters
 ├── data_model.dart             # Data models (scans, fingerprints, history, predictions)
-├── wifi_scanner.dart           # Wi-Fi scanning module
+├── wifi_scanner.dart           # Wi‑Fi scanning module
+├── cell_scanner.dart           # Cellular tower scanning module
 ├── local_database.dart         # SQLite database management
 ├── knn_localization.dart       # KNN algorithm implementation
 ├── main.dart                   # Main UI
 ├── services/
 │   ├── fingerprint_service.dart    # Training/fingerprint workflows
-│   ├── data_logger_service.dart    # Logging Wi-Fi scans & location history
-│   ├── movement_prediction_service.dart # Markov predictor for next zone
+│   ├── indoor_localization_service.dart  # Wi‑Fi KNN estimator
+│   ├── outdoor_localization_service.dart # Cell‑tower estimator
+│   ├── unified_localization_service.dart # Combines indoor/outdoor
+│   ├── trajectory_service.dart          # Path tracking
+│   ├── path_prediction_service.dart     # Markov path prediction
+│   ├── movement_prediction_service.dart # Zone‑to‑zone predictor
+│   ├── data_logger_service.dart         # Logging scans & locations
+│   ├── data_export_service.dart         # CSV export helpers
 │   ├── location_service.dart
 │   └── settings_service.dart
 └── utils/
@@ -43,6 +52,7 @@ lib/
 - Flutter SDK (>=3.0.0)
 - Dart SDK (>=3.0.0)
 - Android Studio / Xcode
+- (optional) Location permission for cell tower access on Android
 
 ### Install Dependencies
 
@@ -67,11 +77,12 @@ flutter build appbundle --release
 
 ### Online Mode (Location Estimation)
 
-1. Click "Scan WiFi" button
-2. View results:
+1. Click "Scan WiFi" button (scans Wi‑Fi and cellular towers automatically)
+2. App determines environment (Indoor/Outdoor/Hybrid/Unknown) and runs the appropriate KNN estimator
+3. View results:
    - Estimated location (latitude, longitude)
-   - Confidence score
-   - List of detected Wi-Fi networks
+   - Environment type and confidence score
+   - List of detected Wi‑Fi networks and/or cell towers
    - Map display
 
 ### Training Mode
