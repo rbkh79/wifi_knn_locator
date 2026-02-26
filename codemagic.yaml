@@ -1,4 +1,46 @@
 workflows:
+  android_appbundle:
+    name: Android AppBundle Build
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      vars:
+        ANDROID_BUILD_DIR: android
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "*"
+          include: true
+          source: true
+
+    scripts:
+      - name: Flutter pub get
+        script: |
+          flutter pub get
+
+      - name: Ensure Gradle wrapper
+        script: |
+          cd $ANDROID_BUILD_DIR
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build Android App Bundle (debug)
+        script: |
+          flutter build appbundle --debug --verbose
+
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/*.apk
+      - flutter_drive.log
+
+workflows:
   android_debug_apk:
     name: Debug APK (Fast)
     environment:
