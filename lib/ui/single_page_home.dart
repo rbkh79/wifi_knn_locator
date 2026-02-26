@@ -294,11 +294,11 @@ class _SinglePageLocalizationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
         title: const Text('موقعیت‌یابی هوشمند'),
         elevation: 0,
         actions: [
-          // Research mode toggle
           IconButton(
             icon: Icon(_researchMode ? Icons.science : Icons.science_outlined),
             tooltip: 'Research Mode',
@@ -320,62 +320,52 @@ class _SinglePageLocalizationScreenState
           ),
           IconButton(
             icon: const Icon(Icons.history),
-            onPressed: () async {
-              final selected = await Navigator.of(context).push<LocationHistoryEntry>(
-                MaterialPageRoute(builder: (_) => const LocationHistoryScreen()),
-              );
-              if (selected != null) {
-                setState(() {
-                  _currentPosition = LocationEstimate(
-                    latitude: selected.latitude,
-                    longitude: selected.longitude,
-                    confidence: selected.confidence ?? 0.5,
-                    nearestNeighbors: [],
-                    averageDistance: 0,
-                  );
-                  _environmentType = _mapEnvironmentTypeFromLabel(selected.zoneLabel ?? '');
-                });
-              }
-            },
+            onPressed: _openHistory,
           ),
         ],
       ),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            // بخش هدر (اپراتور و سیگنال)
-            OperatorStatusHeader(
-              operatorName: _operatorName,
-              networkType: _networkType,
-              signalStrength: _signalStrength,
-              environmentType: _environmentType,
-              batteryLevel: _batteryLevel,
-              isCharging: _isCharging,
-            ),
-
-            // بخش نقشه
-            Expanded(
-              flex: 7,
+            Positioned.fill(
               child: PositionMapWidget(
                 key: _mapKey,
                 currentPosition: _currentPosition,
                 environmentType: _environmentType,
                 trajectoryHistory: _trajectoryHistory,
                 isScanning: _isScanning,
-                onCenterPressed: () {
-                  try {
-                    final state = _mapKey.currentState as dynamic;
-                    state?.centerOnCurrent();
-                  } catch (e) {
-                    debugPrint('Error centering map: $e');
-                  }
-                },
+                onCenterPressed: _centerMap,
               ),
             ),
-
-            // بخش پنل مختصات (Draggable)
-            Expanded(
-              flex: 3,
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Theme.of(context).colorScheme.primary.withOpacity(0.9),
+                      Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                child: OperatorStatusHeader(
+                  operatorName: _operatorName,
+                  networkType: _networkType,
+                  signalStrength: _signalStrength,
+                  environmentType: _environmentType,
+                  batteryLevel: _batteryLevel,
+                  isCharging: _isCharging,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
               child: CoordinatePanel(
                 estimate: _currentPosition,
                 environmentType: _environmentType,
@@ -392,9 +382,8 @@ class _SinglePageLocalizationScreenState
           ],
         ),
       ),
-
-      // دکمه اسکن ثابت (FAB)
       floatingActionButton: _buildScanButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -417,23 +406,39 @@ class _SinglePageLocalizationScreenState
         break;
       case ScanState.idle:
       default:
-        bgColor = Theme.of(context).primaryColor;
+        bgColor = Theme.of(context).colorScheme.secondary;
         icon = Icons.my_location;
     }
 
-    return FloatingActionButton(
-      onPressed: _isScanning ? null : _performScan,
-      backgroundColor: bgColor,
-      child: _isScanning
-          ? const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(Colors.white),
-              ),
-            )
-          : Icon(icon),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: bgColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: FloatingActionButton(
+        onPressed: _isScanning ? null : _performScan,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: _isScanning
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                ),
+              )
+            : Icon(icon, color: Colors.white),
+      ),
     );
   }
 

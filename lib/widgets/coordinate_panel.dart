@@ -64,20 +64,21 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
     return DraggableScrollableSheet(
       initialChildSize: 0.25,
       minChildSize: 0.15,
-      maxChildSize: 0.5,
+      maxChildSize: 0.6,
       builder: (context, scrollController) {
-        return Container(
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
           decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(20),
               topRight: Radius.circular(20),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
               ),
             ],
           ),
@@ -112,14 +113,39 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                 lat,
                 '°N',
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               _buildCoordinateRow(
                 context,
                 'طول جغرافیایی',
                 lon,
                 '°E',
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
+              // دکمه‌های کپی و اشتراک
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    tooltip: 'کپی مختصات',
+                    icon: const Icon(Icons.copy, size: 20),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: '$lat,$lon'));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('مختصات کپی شد')),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'اشتراک مختصات',
+                    icon: const Icon(Icons.share, size: 20),
+                    onPressed: () {
+                      Share.share('موقعیت من: $lat, $lon');
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
 
               // اطمینان
               _buildConfidenceBar(confidencePercent, confidence),
@@ -159,7 +185,7 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
               ],
               const SizedBox(height: 16),
 
-              // دکمه‌ها
+              // دکمه‌های عملیاتی
               Row(
                 children: [
                   Expanded(
@@ -171,21 +197,26 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(Colors.white),
                               ),
                             )
                           : const Icon(Icons.refresh),
-                      label: const Text('اسکن مجدد'),
+                      label: const Text('اسکن'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: ElevatedButton.icon(
+                    child: FilledButton.icon(
                       onPressed: widget.onSave,
                       icon: const Icon(Icons.save),
                       label: const Text('ذخیره'),
-                      style: ElevatedButton.styleFrom(
+                      style: FilledButton.styleFrom(
                         backgroundColor: Colors.green.shade600,
                         foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(44),
                       ),
                     ),
                   ),
@@ -204,18 +235,19 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
       minChildSize: 0.15,
       maxChildSize: 0.5,
       builder: (context, scrollController) {
-        return Container(
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
           decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(20),
               topRight: Radius.circular(20),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
               ),
             ],
           ),

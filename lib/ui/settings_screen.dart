@@ -69,17 +69,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 2,
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('حالت اسکن', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('حالت اسکن', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
                   SwitchListTile(
                     value: _continuousScan,
                     title: const Text('اسکن مداوم'),
                     subtitle: const Text('اسکن خودکار در پس‌زمینه'),
                     onChanged: (v) => setState(() => _continuousScan = v),
+                    activeColor: Theme.of(context).colorScheme.secondary,
                   ),
                   const SizedBox(height: 6),
                   Text('فاصله اسکن: ${_scanInterval.toInt()} ثانیه'),
@@ -88,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     max: 15,
                     divisions: 12,
                     value: _scanInterval,
+                    activeColor: Theme.of(context).colorScheme.secondary,
                     onChanged: (v) => setState(() => _scanInterval = v),
                   ),
                   SwitchListTile(
@@ -95,6 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('اسکن هوشمند بر اساس حرکت'),
                     subtitle: const Text('تشخیص ساکن/راه‌رفتن با شتاب‌سنج'),
                     onChanged: (v) => setState(() => _motionAware = v),
+                    activeColor: Theme.of(context).colorScheme.secondary,
                   ),
                 ],
               ),

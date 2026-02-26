@@ -12,6 +12,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primary,
+        brightness: Brightness.light,
         primary: primary,
         secondary: secondary,
         background: background,
@@ -21,7 +22,6 @@ class AppTheme {
         backgroundColor: primary,
         foregroundColor: Colors.white,
       ),
-      // keep card theme default (avoid SDK mismatches)
       fontFamily: 'Vazir',
       textTheme: const TextTheme(
         titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -31,4 +31,22 @@ class AppTheme {
       ),
     );
   }
++
++  static ThemeData darkTheme() {
++    return ThemeData(
++      useMaterial3: true,
++      brightness: Brightness.dark,
++      colorScheme: ColorScheme.fromSeed(
++        seedColor: primary,
++        brightness: Brightness.dark,
++      ),
++      fontFamily: 'Vazir',
++      textTheme: const TextTheme(
++        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
++        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
++        bodyMedium: TextStyle(fontSize: 14),
++        labelSmall: TextStyle(fontSize: 12),
++      ),
++    );
++  }
 }

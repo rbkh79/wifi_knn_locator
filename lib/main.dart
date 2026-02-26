@@ -980,75 +980,21 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('WiFi KNN Locator'),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
-        actions: [
-          // نمایش شناسه دستگاه در AppBar
-          if (_deviceId != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Center(
-                child: Text(
-                  'ID: ${PrivacyUtils.shortenMacAddress(_deviceId!, maxLength: 8)}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
-        ],
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.blue.shade50,
-              Colors.white,
-            ],
-          ),
-        ),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // بخش موقعیت دستگاه
-            _buildDeviceLocationSection(),
-            const SizedBox(height: 16),
-            
-            // بخش اسکن Wi-Fi
-            _buildWifiScanSection(),
-            const SizedBox(height: 16),
-            
-            // بخش نقشه و نقاط مرجع
-            _buildMapSection(),
-            const SizedBox(height: 16),
-            
-            // بخش وضعیت محیط (Indoor/Outdoor)
-            if (_unifiedResult != null)
-              _buildEnvironmentSection(),
-            if (_unifiedResult != null)
-              const SizedBox(height: 16),
-            
-            // بخش نتایج سیگنال‌ها
-            _buildSignalResultsSection(),
-            const SizedBox(height: 16),
-            
-            // بخش پیش‌بینی مسیر
-            if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
-              _buildPathPredictionSection(),
-            if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
-              const SizedBox(height: 16),
-
-            // بخش دیباگ
-            _buildDebugPanel(),
-            const SizedBox(height: 16),
-            
-            // بخش تنظیمات
-            _buildSettingsSection(),
-            const SizedBox(height: 16),
-            
+    // replace legacy dashboard with new single-page experience
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'wifi_knn_locator',
+      theme: AppTheme.lightTheme(),
+      darkTheme: AppTheme.darkTheme(),
+      themeMode: ThemeMode.system,
+      home: const SinglePageLocalizationScreen(),
+      routes: {
+        '/home': (c) => const SinglePageLocalizationScreen(),
+        '/settings': (c) => const SettingsScreen(),
+        '/signals': (c) => const SignalResultsScreen(),
+      },
+    );
+  }            
             // بخش Researcher Mode
             _buildResearcherModeSection(),
             const SizedBox(height: 16),
