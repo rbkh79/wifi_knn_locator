@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../data_model.dart';
 import '../models/environment_type.dart';
 
@@ -10,6 +11,7 @@ class CoordinatePanel extends StatefulWidget {
   final bool isLoading;
   final VoidCallback? onScan;
   final VoidCallback? onSave;
+  final VoidCallback? onShowSignals;
 
   const CoordinatePanel({
     Key? key,
@@ -19,6 +21,7 @@ class CoordinatePanel extends StatefulWidget {
     this.isLoading = false,
     this.onScan,
     this.onSave,
+    this.onShowSignals,
   }) : super(key: key);
 
   @override
@@ -166,6 +169,13 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              if (widget.onShowSignals != null)
+                TextButton.icon(
+                  onPressed: widget.onShowSignals,
+                  icon: const Icon(Icons.graphic_eq),
+                  label: const Text('جزئیات سیگنال‌ها'),
+                ),
             ],
           ),
         );
@@ -293,7 +303,13 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
             icon: const Icon(Icons.copy),
             onPressed: () {
               final text = '$value$unit';
-              // TODO: Copy to clipboard
+              Clipboard.setData(ClipboardData(text: text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('"$label" کپی شد'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
             },
             tooltip: 'کپی کردن',
           ),
@@ -303,6 +319,7 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
   }
 
   Widget _buildConfidenceBar(String percent, double confidence) {
+    final clamped = confidence.clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -324,13 +341,25 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
         ),
         const SizedBox(height: 8),
         ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: confidence,
-            minHeight: 8,
-            backgroundColor: Colors.grey.shade300,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              _getConfidenceColor(confidence),
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            height: 10,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.red,
+                  Colors.orange,
+                  Colors.green,
+                ],
+              ),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: clamped,
+                alignment: Alignment.centerLeft,
+                child: const SizedBox.expand(),
+              ),
             ),
           ),
         ),

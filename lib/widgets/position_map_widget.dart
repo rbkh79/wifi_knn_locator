@@ -185,9 +185,42 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
           child: FloatingActionButton(
             mini: true,
             onPressed: () {
-              if (_mapCenter != null) _mapController.move(_mapCenter!, 17);
+              if (_mapCenter != null) {
+                _mapController.move(_mapCenter!, 17);
+              }
+              widget.onCenterPressed?.call();
             },
             child: const Icon(Icons.my_location),
+          ),
+        ),
+
+        // Zoom controls
+        Positioned(
+          left: 16,
+          bottom: 80,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton(
+                heroTag: 'zoom_in',
+                mini: true,
+                onPressed: () {
+                  final zoom = _mapController.zoom + 1;
+                  _mapController.move(_mapController.center, zoom);
+                },
+                child: const Icon(Icons.add),
+              ),
+              const SizedBox(height: 8),
+              FloatingActionButton(
+                heroTag: 'zoom_out',
+                mini: true,
+                onPressed: () {
+                  final zoom = _mapController.zoom - 1;
+                  _mapController.move(_mapController.center, zoom);
+                },
+                child: const Icon(Icons.remove),
+              ),
+            ],
           ),
         ),
 

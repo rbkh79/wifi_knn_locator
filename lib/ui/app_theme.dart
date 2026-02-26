@@ -31,4 +31,26 @@ class AppTheme {
       ),
     );
   }
+
+   static ThemeData darkTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF1976D2),
+        brightness: Brightness.dark,
+      ),
+      scaffoldBackgroundColor: const Color(0xFF121212),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF1976D2),
+        foregroundColor: Colors.white,
+      ),
+      fontFamily: 'Vazir',
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        bodyMedium: TextStyle(fontSize: 14),
+        labelSmall: TextStyle(fontSize: 12),
+      ),
+    );
+  }
 }

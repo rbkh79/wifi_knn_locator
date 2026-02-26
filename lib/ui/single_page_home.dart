@@ -9,6 +9,7 @@ import '../models/environment_type.dart';
 import '../widgets/operator_status_header.dart';
 import '../widgets/position_map_widget.dart';
 import '../widgets/coordinate_panel.dart';
+import '../widgets/signal_detail_sheet.dart';
 
 /// صفحه اصلی واحد برای موقعیت‌یابی
 class SinglePageLocalizationScreen extends StatefulWidget {
@@ -40,6 +41,10 @@ class _SinglePageLocalizationScreenState
   // اطلاعات دستگاه
   double _batteryLevel = 0.8;
   bool _isCharging = false;
+
+  // آخرین نتایج اسکن برای نمایش در پنل سیگنال‌ها
+  WifiScanResult? _lastWifiScan;
+  CellScanResult? _lastCellScan;
 
   // سرویس‌ها
   late UnifiedLocalizationService _localizationService;
@@ -104,6 +109,24 @@ class _SinglePageLocalizationScreenState
       );
 
       setState(() {
+        _lastWifiScan = wifiResult;
+        _lastCellScan = cellResult;
+
+        if (wifiResult.accessPoints.isEmpty &&
+            cellResult.allCells.isEmpty) {
+          _currentPosition = null;
+          _scanState = ScanState.error;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('سیگنال ضعیف - لطفاً کمی جابجا شوید'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
         if (result.estimate != null && result.isReliable) {
           _currentPosition = result.estimate;
           _environmentType = _mapEnvironmentType(result.environmentType);
@@ -250,7 +273,6 @@ class _SinglePageLocalizationScreenState
                 trajectoryHistory: _trajectoryHistory,
                 isScanning: _isScanning,
                 onCenterPressed: () {
-                  // TODO: Center map
                 },
               ),
             ),
@@ -265,6 +287,17 @@ class _SinglePageLocalizationScreenState
                 isLoading: _isScanning,
                 onScan: _performScan,
                 onSave: _savePosition,
+                onShowSignals: () {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (ctx) => SignalDetailSheet(
+                      wifiScan: _lastWifiScan,
+                      cellScan: _lastCellScan,
+                    ),
+                  );
+                },
               ),
             ),
           ],

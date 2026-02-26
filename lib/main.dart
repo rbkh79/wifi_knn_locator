@@ -64,9 +64,6 @@ import 'widgets/environment_indicator.dart';
 import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
 import 'ui/app_theme.dart';
-import 'ui/settings_screen.dart';
-import 'ui/signal_results_screen.dart';
-import 'ui/modern_home.dart';
 import 'ui/single_page_home.dart';
 import 'utils/privacy_utils.dart';
 import 'utils/permission_utils.dart';
@@ -80,7 +77,7 @@ void main() async {
 }
 
 class MyApp extends StatefulWidget {
-  MyApp({Key? key}) : super(key: key);
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   _MyAppState createState() => _MyAppState();
@@ -982,92 +979,13 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('WiFi KNN Locator'),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
-        actions: [
-          // نمایش شناسه دستگاه در AppBar
-          if (_deviceId != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Center(
-                child: Text(
-                  'ID: ${PrivacyUtils.shortenMacAddress(_deviceId!, maxLength: 8)}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
-        ],
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.blue.shade50,
-              Colors.white,
-            ],
-          ),
-        ),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // بخش موقعیت دستگاه
-            _buildDeviceLocationSection(),
-            const SizedBox(height: 16),
-            
-            // بخش اسکن Wi-Fi
-            _buildWifiScanSection(),
-            const SizedBox(height: 16),
-            
-            // بخش نقشه و نقاط مرجع
-            _buildMapSection(),
-            const SizedBox(height: 16),
-            
-            // بخش وضعیت محیط (Indoor/Outdoor)
-            if (_unifiedResult != null)
-              _buildEnvironmentSection(),
-            if (_unifiedResult != null)
-              const SizedBox(height: 16),
-            
-            // بخش نتایج سیگنال‌ها
-            _buildSignalResultsSection(),
-            const SizedBox(height: 16),
-            
-            // بخش پیش‌بینی مسیر
-            if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
-              _buildPathPredictionSection(),
-            if (_pathPrediction != null && _pathPrediction!.predictedLocations.isNotEmpty)
-              const SizedBox(height: 16),
-
-            // بخش دیباگ
-            _buildDebugPanel(),
-            const SizedBox(height: 16),
-            
-            // بخش تنظیمات
-            _buildSettingsSection(),
-            const SizedBox(height: 16),
-            
-            // بخش Researcher Mode
-            _buildResearcherModeSection(),
-            const SizedBox(height: 16),
-            
-            // اطلاعات شفافیت
-            _buildTransparencyInfo(),
-          ],
-        ),
-      ),
-      floatingActionButton: _isTrainingMode
-          ? FloatingActionButton.extended(
-              onPressed: _saveFingerprint,
-              icon: const Icon(Icons.save),
-              label: const Text('ذخیره اثرانگشت'),
-              backgroundColor: Colors.orange,
-            )
-          : null,
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'WiFi KNN Locator',
+      theme: AppTheme.lightTheme(),
+      darkTheme: AppTheme.darkTheme(),
+      themeMode: ThemeMode.system,
+      home: const SinglePageLocalizationScreen(),
     );
   }
 
