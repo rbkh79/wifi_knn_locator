@@ -34,8 +34,8 @@ class _SinglePageLocalizationScreenState
   List<LocationEstimate> _trajectoryHistory = [];
 
   // اطلاعات اپراتور
-  String _operatorName = 'نامشناخته';
-  String _networkType = 'نامشناخته';
+  String _operatorName = 'نامشخص';
+  String _networkType = 'نامشخص';
   int _signalStrength = 0;
 
   // اطلاعات دستگاه
@@ -95,13 +95,13 @@ class _SinglePageLocalizationScreenState
     });
 
     try {
+      final scanStart = DateTime.now();
       // اسکن Wi-Fi
       final wifiResult = await WifiScanner.performScan();
-      debugPrint('WiFi Scan: ${wifiResult.accessPoints.length} APs found');
 
       // اسکن سلولی
       final cellResult = await CellScanner.performScan();
-      debugPrint('Cell Scan: ${cellResult.allCells.length} cells found');
+      final scanDuration = DateTime.now().difference(scanStart);
 
       // موقعیت‌یابی یکپارچه
       final result = await _localizationService.performLocalization(
@@ -119,7 +119,7 @@ class _SinglePageLocalizationScreenState
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('سیگنال ضعیف - لطفاً کمی جابجا شوید'),
+                content: Text('سیگنال ضعیف - جابجا شوید'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -135,6 +135,16 @@ class _SinglePageLocalizationScreenState
         } else {
           _scanState = ScanState.error;
         }
+
+        // نشانگر پژوهشی: زمان اسکن (برای مستندسازی دفاع)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('زمان اسکن: ${scanDuration.inMilliseconds} میلی‌ثانیه'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
       });
     } catch (e) {
       debugPrint('Scan error: $e');
@@ -143,7 +153,7 @@ class _SinglePageLocalizationScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('خطا در اسکن. لطفاً دوباره تلاش کنید.'),
+            content: const Text('خطا در اسکن. دوباره تلاش کنید.'),
             backgroundColor: Colors.red.shade700,
             duration: const Duration(seconds: 3),
           ),
