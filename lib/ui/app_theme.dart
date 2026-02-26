@@ -31,22 +31,22 @@ class AppTheme {
       ),
     );
   }
-+
-+  static ThemeData darkTheme() {
-+    return ThemeData(
-+      useMaterial3: true,
-+      brightness: Brightness.dark,
-+      colorScheme: ColorScheme.fromSeed(
-+        seedColor: primary,
-+        brightness: Brightness.dark,
-+      ),
-+      fontFamily: 'Vazir',
-+      textTheme: const TextTheme(
-+        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-+        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-+        bodyMedium: TextStyle(fontSize: 14),
-+        labelSmall: TextStyle(fontSize: 12),
-+      ),
-+    );
-+  }
+
+  static ThemeData darkTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: Brightness.dark,
+      ),
+      fontFamily: 'Vazir',
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        bodyMedium: TextStyle(fontSize: 14),
+        labelSmall: TextStyle(fontSize: 12),
+      ),
+    );
+  }
 }

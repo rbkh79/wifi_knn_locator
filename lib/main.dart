@@ -994,25 +994,6 @@ class _MyAppState extends State<MyApp> {
         '/signals': (c) => const SignalResultsScreen(),
       },
     );
-  }            
-            // بخش Researcher Mode
-            _buildResearcherModeSection(),
-            const SizedBox(height: 16),
-            
-            // اطلاعات شفافیت
-            _buildTransparencyInfo(),
-          ],
-        ),
-      ),
-      floatingActionButton: _isTrainingMode
-          ? FloatingActionButton.extended(
-              onPressed: _saveFingerprint,
-              icon: const Icon(Icons.save),
-              label: const Text('ذخیره اثرانگشت'),
-              backgroundColor: Colors.orange,
-            )
-          : null,
-    );
   }
 
   Widget _buildMapSection() {

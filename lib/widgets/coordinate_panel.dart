@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../data_model.dart';
 import '../models/environment_type.dart';
 import '../config.dart';
