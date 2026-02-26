@@ -989,9 +989,9 @@ class _MyAppState extends State<MyApp> {
       themeMode: ThemeMode.system,
       home: const SinglePageLocalizationScreen(),
       routes: {
-        '/home': (c) => const SinglePageLocalizationScreen(),
-        '/settings': (c) => const SettingsScreen(),
-        '/signals': (c) => const SignalResultsScreen(),
+        '/home': (c) => SinglePageLocalizationScreen(),
+        '/settings': (c) => SettingsScreen(),
+        '/signals': (c) => SignalResultsScreen(),
       },
     );
   }
