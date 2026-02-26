@@ -265,6 +265,19 @@ class _SinglePageLocalizationScreenState
     }
   }
 
+  EnvironmentType _mapEnvironmentTypeFromEnum(String envType) {
+    switch (envType) {
+      case 'indoor':
+        return EnvironmentType.indoor;
+      case 'outdoor':
+        return EnvironmentType.outdoor;
+      case 'hybrid':
+        return EnvironmentType.hybrid;
+      default:
+        return EnvironmentType.unknown;
+    }
+  }
+
   EnvironmentType _mapEnvironmentTypeFromLabel(String label) {
     switch (label) {
       case 'داخلی':
