@@ -3,12 +3,16 @@ import '../config.dart';
 import '../wifi_scanner.dart';
 import '../cell_scanner.dart';
 import '../services/unified_localization_service.dart';
+import '../services/settings_service.dart';
 import '../data_model.dart';
 import '../local_database.dart';
 import '../models/environment_type.dart';
 import '../widgets/operator_status_header.dart';
 import '../widgets/position_map_widget.dart';
 import '../widgets/coordinate_panel.dart';
+import 'settings_screen.dart';
+import 'location_history_screen.dart';
+import 'location_history_screen.dart';
 
 /// صفحه اصلی واحد برای موقعیت‌یابی
 class SinglePageLocalizationScreen extends StatefulWidget {
@@ -23,9 +27,19 @@ enum ScanState { idle, scanning, success, error }
 
 class _SinglePageLocalizationScreenState
     extends State<SinglePageLocalizationScreen> with WidgetsBindingObserver {
+  final GlobalKey<_PositionMapWidgetState> _mapKey = GlobalKey();
   // حالت اسکن
   ScanState _scanState = ScanState.idle;
   bool _isScanning = false;
+
+  // حالت پژوهشی
+  bool _researchMode = false;
+
+  // متریک‌های اسکن و K
+  int? _scanLatencyMs;
+  int? _activeSignalCount;
+  int? _kUsed;
+  int _currentK = AppConfig.defaultK;
 
   // داده‌های موقعیت
   LocationEstimate? _currentPosition;
@@ -45,6 +59,9 @@ class _SinglePageLocalizationScreenState
   late UnifiedLocalizationService _localizationService;
   late LocalDatabase _database;
 
+  // Global key for map widget centering
+  final GlobalKey<dynamic> _mapKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +70,13 @@ class _SinglePageLocalizationScreenState
     _database = LocalDatabase.instance;
     _localizationService = UnifiedLocalizationService(_database);
     
+    // بارگذاری حالت پژوهشی
+    SettingsService.getBool('research_mode').then((v) {
+      setState(() {
+        _researchMode = v ?? false;
+      });
+    });
+
     // آپدیت اطلاعات اپراتور و باتری
     _updateOperatorInfo();
     _updateBatteryInfo();
@@ -62,6 +86,46 @@ class _SinglePageLocalizationScreenState
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _centerMap() {
+    // instruct child widget to re-center on currentPosition
+    _mapKey.currentState?.centerOnCurrent();
+  }
+
+  Future<void> _openHistory() async {
+    final entry = await Navigator.of(context).push<LocationHistoryEntry>(
+      MaterialPageRoute(builder: (_) => const LocationHistoryScreen()),
+    );
+    if (entry != null) {
+      // convert history entry to LocationEstimate-like display
+      setState(() {
+        _currentPosition = LocationEstimate(
+          latitude: entry.latitude,
+          longitude: entry.longitude,
+          confidence: entry.confidence,
+          zoneLabel: entry.zoneLabel,
+          nearestNeighbors: const [],
+          averageDistance: 0.0,
+        );
+        _environmentType = _environmentTypeLabelToType(entry.zoneLabel ?? '');
+        _trajectoryHistory.add(_currentPosition!);
+      });
+      _centerMap();
+    }
+  }
+
+  EnvironmentType _environmentTypeLabelToType(String label) {
+    switch (label) {
+      case 'داخلی':
+        return EnvironmentType.indoor;
+      case 'خارجی':
+        return EnvironmentType.outdoor;
+      case 'ترکیبی':
+        return EnvironmentType.hybrid;
+      default:
+        return EnvironmentType.unknown;
+    }
   }
 
   void _updateOperatorInfo() {
@@ -89,6 +153,7 @@ class _SinglePageLocalizationScreenState
       _scanState = ScanState.scanning;
     });
 
+    final sw = Stopwatch()..start();
     try {
       // اسکن Wi-Fi
       final wifiResult = await WifiScanner.performScan();
@@ -101,12 +166,19 @@ class _SinglePageLocalizationScreenState
       // موقعیت‌یابی یکپارچه
       final result = await _localizationService.performLocalization(
         deviceId: 'user-device',
+        k: _currentK,
       );
+
+      sw.stop();
+      _scanLatencyMs = sw.elapsedMilliseconds;
+      _activeSignalCount = wifiResult.accessPoints.length + cellResult.allCells.length;
+      _kUsed = result.kUsed;
+      _currentK = result.kUsed;
 
       setState(() {
         if (result.estimate != null && result.isReliable) {
           _currentPosition = result.estimate;
-          _environmentType = _mapEnvironmentType(result.environmentType);
+          _environmentType = _mapEnvironmentTypeFromEnum(result.environmentType);
           _trajectoryHistory.add(result.estimate!);
           _scanState = ScanState.success;
         } else {
@@ -180,19 +252,6 @@ class _SinglePageLocalizationScreenState
     }
   }
 
-  EnvironmentType _mapEnvironmentType(String envType) {
-    switch (envType) {
-      case 'indoor':
-        return EnvironmentType.indoor;
-      case 'outdoor':
-        return EnvironmentType.outdoor;
-      case 'hybrid':
-        return EnvironmentType.hybrid;
-      default:
-        return EnvironmentType.unknown;
-    }
-  }
-
   String _environmentTypeLabel() {
     switch (_environmentType) {
       case EnvironmentType.indoor:
@@ -207,6 +266,19 @@ class _SinglePageLocalizationScreenState
     }
   }
 
+  EnvironmentType _mapEnvironmentTypeFromLabel(String label) {
+    switch (label) {
+      case 'داخلی':
+        return EnvironmentType.indoor;
+      case 'خارجی':
+        return EnvironmentType.outdoor;
+      case 'ترکیبی':
+        return EnvironmentType.hybrid;
+      default:
+        return EnvironmentType.unknown;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -214,16 +286,42 @@ class _SinglePageLocalizationScreenState
         title: const Text('موقعیت‌یابی هوشمند'),
         elevation: 0,
         actions: [
+          // Research mode toggle
+          IconButton(
+            icon: Icon(_researchMode ? Icons.science : Icons.science_outlined),
+            tooltip: 'Research Mode',
+            onPressed: () {
+              setState(() {
+                _researchMode = !_researchMode;
+              });
+              SettingsService.setBool('research_mode', _researchMode);
+            },
+            color: _researchMode ? Colors.amber : null,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              // TODO: Navigate to settings
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
             },
           ),
           IconButton(
             icon: const Icon(Icons.history),
-            onPressed: () {
-              // TODO: Show history
+            onPressed: () async {
+              final selected = await Navigator.of(context).push<LocationHistoryEntry>(
+                MaterialPageRoute(builder: (_) => const LocationHistoryScreen()),
+              );
+              if (selected != null) {
+                setState(() {
+                  _currentPosition = LocationEstimate(
+                    latitude: selected.latitude,
+                    longitude: selected.longitude,
+                    confidence: selected.confidence ?? 0.5,
+                  );
+                  _environmentType = _mapEnvironmentTypeFromLabel(selected.zoneLabel ?? '');
+                });
+              }
             },
           ),
         ],
@@ -245,12 +343,18 @@ class _SinglePageLocalizationScreenState
             Expanded(
               flex: 7,
               child: PositionMapWidget(
+                key: _mapKey,
                 currentPosition: _currentPosition,
                 environmentType: _environmentType,
                 trajectoryHistory: _trajectoryHistory,
                 isScanning: _isScanning,
                 onCenterPressed: () {
-                  // TODO: Center map
+                  try {
+                    final state = _mapKey.currentState as dynamic;
+                    state?.centerOnCurrent();
+                  } catch (e) {
+                    debugPrint('Error centering map: $e');
+                  }
                 },
               ),
             ),
@@ -265,6 +369,10 @@ class _SinglePageLocalizationScreenState
                 isLoading: _isScanning,
                 onScan: _performScan,
                 onSave: _savePosition,
+                researchMode: _researchMode,
+                scanLatencyMs: _lastScanLatencyMs,
+                signalCount: _lastSignalCount,
+                kUsed: _currentK,
               ),
             ),
           ],

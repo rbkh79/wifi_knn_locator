@@ -11,9 +11,12 @@ class PrivacyUtils {
     if (!AppConfig.hashDeviceMac) {
       return mac;
     }
-    final bytes = utf8.encode(mac.toLowerCase());
+    // اضافه کردن نمک قبل از هش برای جلوگیری از حملات پیش‌ساخته
+    final salted = '${AppConfig.privacySalt}|${mac.toLowerCase()}';
+    final bytes = utf8.encode(salted);
     final digest = sha256.convert(bytes);
-    return digest.toString().substring(0, 16); // 16 کاراکتر اول هش
+    // برگرداندن تنها 4 کاراکتر اول تا حریم بیشتر حفظ شود
+    return digest.toString().substring(0, 4);
   }
 
   /// نمایش MAC address به صورت جزئی (برای شفافیت)
@@ -44,8 +47,9 @@ class PrivacyUtils {
     // از shared_preferences استفاده می‌کنیم تا برای هر نصب شناسه ثابت داشته باشد
     final userId = await SettingsService.getOrCreateUserId();
     if (AppConfig.hashDeviceMac) {
-      // برای سازگاری با سیاست‌های حریم خصوصی، هش شده نگه می‌داریم
-      final bytes = utf8.encode(userId);
+      // استفاده از نمک و هش برای شناسه دستگاه
+      final salted = '${AppConfig.privacySalt}|$userId';
+      final bytes = utf8.encode(salted);
       final digest = sha256.convert(bytes);
       return digest.toString().substring(0, 16);
     }

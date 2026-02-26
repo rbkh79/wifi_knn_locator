@@ -27,6 +27,7 @@ class UnifiedLocalizationResult {
   final String? zoneLabel;
   final IndoorLocalizationResult? indoorResult;
   final OutdoorLocalizationResult? outdoorResult;
+  final int kUsed;
 
   UnifiedLocalizationResult({
     this.estimate,
@@ -35,6 +36,7 @@ class UnifiedLocalizationResult {
     this.zoneLabel,
     this.indoorResult,
     this.outdoorResult,
+    this.kUsed = AppConfig.defaultK,
   });
 
   bool get isReliable => estimate != null && confidence >= 0.3;
@@ -62,10 +64,11 @@ class UnifiedLocalizationService {
   Future<UnifiedLocalizationResult> performLocalization({
     required String deviceId,
     bool preferIndoor = true,
+    int k = AppConfig.defaultK,
   }) async {
     try {
-      final indoorFuture = _indoorService.performIndoorLocalization();
-      final outdoorFuture = _outdoorService.performOutdoorLocalization();
+      final indoorFuture = _indoorService.performIndoorLocalization(k: k);
+      final outdoorFuture = _outdoorService.performOutdoorLocalization(k: k);
       final indoorResult = await indoorFuture;
       final outdoorResult = await outdoorFuture;
 
@@ -142,6 +145,7 @@ class UnifiedLocalizationService {
         zoneLabel: finalEstimate?.zoneLabel,
         indoorResult: indoorResult,
         outdoorResult: outdoorResult,
+        kUsed: k,
       );
     } catch (e) {
       debugPrint('Error in unified localization: $e');

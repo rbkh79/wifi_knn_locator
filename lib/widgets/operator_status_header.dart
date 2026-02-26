@@ -53,11 +53,13 @@ class OperatorStatusHeader extends StatelessWidget {
   String _getEnvironmentLabel() {
     switch (environmentType) {
       case EnvironmentType.indoor:
-        return 'داخلی';
-      case EnvironmentType.outdoor:
-        return 'خارجی';
+        // only Wi‑Fi used
+        return '🏢 داخلی (فقط وای‌فای)';
       case EnvironmentType.hybrid:
-        return 'ترکیبی';
+        // Wi‑Fi + BTS
+        return '🏢 داخلی (وای‌فای + BTS)';
+      case EnvironmentType.outdoor:
+        return '📡 خارجی (فقط BTS)';
       case EnvironmentType.unknown:
       default:
         return 'نامشخص';

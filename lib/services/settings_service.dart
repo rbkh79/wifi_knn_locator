@@ -11,6 +11,18 @@ class SettingsService {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
+  /// Generic bool getter (used for new research mode toggle etc.)
+  static Future<bool?> getBool(String key) async {
+    await init();
+    return _prefs?.getBool(key);
+  }
+
+  /// Generic bool setter
+  static Future<bool> setBool(String key, bool value) async {
+    await init();
+    return await _prefs?.setBool(key, value) ?? false;
+  }
+
   /// دریافت وضعیت استفاده از موقعیت جغرافیایی
   static Future<bool> getUseGeolocation() async {
     await init();

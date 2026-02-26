@@ -13,6 +13,7 @@ class OutdoorLocalizationResult {
   final double averageSignalStrength;
   /// واریانس قدرت سیگنال (پایین = پایدارتر، اعتماد بالاتر)
   final double signalVariance;
+  final int kUsed;
 
   OutdoorLocalizationResult({
     this.estimate,
@@ -20,6 +21,7 @@ class OutdoorLocalizationResult {
     required this.cellTowerCount,
     required this.averageSignalStrength,
     this.signalVariance = 0.0,
+    this.kUsed = AppConfig.defaultK,
   });
 
   bool get isReliable =>
@@ -81,6 +83,7 @@ class OutdoorLocalizationService {
           cellTowerCount: cellTowerCount,
           averageSignalStrength: avgSignal,
           signalVariance: variance,
+          kUsed: k,
         );
       }
 
@@ -121,6 +124,7 @@ class OutdoorLocalizationService {
         cellTowerCount: cellTowerCount,
         averageSignalStrength: avgSignal,
         signalVariance: variance,
+        kUsed: k,
       );
     } catch (e) {
       debugPrint('Error in outdoor localization: $e');
@@ -128,6 +132,7 @@ class OutdoorLocalizationService {
         isOutdoor: false,
         cellTowerCount: 0,
         averageSignalStrength: 0.0,
+        kUsed: k,
       );
     }
   }

@@ -163,6 +163,10 @@ class LocationEstimate {
   final String? zoneLabel; // لیبل ناحیه تخمینی
   final List<FingerprintEntry> nearestNeighbors; // k همسایه نزدیک
   final double averageDistance; // میانگین فاصله تا همسایه‌ها
+  // مقادیر خوشه‌بندی منطقه‌ای (برای حالت Outdoor)
+  final double? regionCentroidLat;
+  final double? regionCentroidLon;
+  final double? regionConfidence;
 
   LocationEstimate({
     required this.latitude,
@@ -171,6 +175,9 @@ class LocationEstimate {
     this.zoneLabel,
     required this.nearestNeighbors,
     required this.averageDistance,
+    this.regionCentroidLat,
+    this.regionCentroidLon,
+    this.regionConfidence,
   });
 
   bool get isReliable => confidence >= AppConfig.confidenceThreshold;
@@ -519,4 +526,109 @@ class HybridFingerprintEntry {
 
   /// بررسی اینکه آیا اثرانگشت ترکیبی است
   bool get isHybrid => hasWifi && hasCell;
+}
+
+/// **لاک تحقیقاتی**: هر تخمین موقعیت که برای استخراج آمار پژوهشی ذخیره می‌شود.
+///
+/// شامل نوع محیط، K استفاده شده، α ترکیب (
+/// برای حالت هیبرید) و پیش‌از‌این، فواصل خام همسایه‌ها، مدت زمان اسکن
+/// و یک نما از مصرف حافظه دستگاه در لحظهٔ تخمین.
+class EstimationLogEntry {
+  final int? id;
+  final String deviceId;
+  final DateTime timestamp;
+  final String environmentType; // 'indoor','outdoor','hybrid','unknown'
+  final List<double> rawDistances;
+  final int kUsed;
+  final double alphaUsed;
+  final int scanDurationMs;
+  final int memoryUsageKb;
+  final double distanceVariance;
+  final double neighborConsistency;
+
+  EstimationLogEntry({
+    this.id,
+    required this.deviceId,
+    required this.timestamp,
+    required this.environmentType,
+    required this.rawDistances,
+    required this.kUsed,
+    required this.alphaUsed,
+    required this.scanDurationMs,
+    required this.memoryUsageKb,
+    required this.distanceVariance,
+    required this.neighborConsistency,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'device_id': deviceId,
+      'timestamp': timestamp.toIso8601String(),
+      'environment_type': environmentType,
+      'raw_distances': rawDistances.join(','), // store CSV
+      'k_used': kUsed,
+      'alpha_used': alphaUsed,
+      'scan_duration_ms': scanDurationMs,
+      'memory_usage_kb': memoryUsageKb,
+      'distance_variance': distanceVariance,
+      'neighbor_consistency': neighborConsistency,
+    };
+  }
+
+  factory EstimationLogEntry.fromMap(Map<String, dynamic> map) {
+    return EstimationLogEntry(
+      id: map['id'] as int?,
+      deviceId: map['device_id'] as String,
+      timestamp: DateTime.parse(map['timestamp'] as String),
+      environmentType: map['environment_type'] as String,
+      rawDistances: (map['raw_distances'] as String)
+          .split(',')
+          .map((s) => double.tryParse(s) ?? 0.0)
+          .toList(),
+      kUsed: map['k_used'] as int,
+      alphaUsed: (map['alpha_used'] as num).toDouble(),
+      scanDurationMs: map['scan_duration_ms'] as int,
+      memoryUsageKb: map['memory_usage_kb'] as int,
+      distanceVariance: (map['distance_variance'] as num).toDouble(),
+      neighborConsistency: (map['neighbor_consistency'] as num).toDouble(),
+    );
+  }
+}
+
+/// لاگ عملکرد برای ثبت زمان‌های مختلف در طول pipeline
+class PerformanceLogEntry {
+  final int? id;
+  final String deviceId;
+  final DateTime timestamp;
+  final String operation; // e.g. 'scan','db_write','knn','ui_update'
+  final int durationMs;
+
+  PerformanceLogEntry({
+    this.id,
+    required this.deviceId,
+    required this.timestamp,
+    required this.operation,
+    required this.durationMs,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'device_id': deviceId,
+      'timestamp': timestamp.toIso8601String(),
+      'operation': operation,
+      'duration_ms': durationMs,
+    };
+  }
+
+  factory PerformanceLogEntry.fromMap(Map<String, dynamic> map) {
+    return PerformanceLogEntry(
+      id: map['id'] as int?,
+      deviceId: map['device_id'] as String,
+      timestamp: DateTime.parse(map['timestamp'] as String),
+      operation: map['operation'] as String,
+      durationMs: map['duration_ms'] as int,
+    );
+  }
 }

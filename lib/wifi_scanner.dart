@@ -135,13 +135,17 @@ class WifiScanner {
     // مرتب‌سازی بر اساس RSSI (قوی‌ترین اول)
     accessPoints.sort((a, b) => b.rssi.compareTo(a.rssi));
 
-    debugPrint('WiFi scan completed: ${accessPoints.length} networks found');
-
-    return WifiScanResult(
+    // تبدیل به نتیجه و اعمال smoothing
+    final result = WifiScanResult(
       deviceId: deviceId,
       timestamp: DateTime.now(),
       accessPoints: accessPoints,
     );
+    final processed = _applySmoothing(result);
+
+    debugPrint('WiFi scan completed: ${processed.accessPoints.length} networks (raw ${accessPoints.length})');
+
+    return processed;
   }
 
   /// اسکن شبیه‌سازی شده (برای تست)
@@ -154,10 +158,38 @@ class WifiScanner {
       WifiReading(bssid: '00:1A:2B:3C:4D:60', rssi: -72, frequency: 2462),
     ];
 
-    return WifiScanResult(
+    return _applySmoothing(WifiScanResult(
       deviceId: deviceId,
       timestamp: DateTime.now(),
       accessPoints: accessPoints,
+    ));
+  }
+
+  static final List<WifiScanResult> _history = [];
+
+  /// اعمال میانگین متحرک بر روی نتایج (با توجه به AppConfig.smoothingWindowSize)
+  static WifiScanResult _applySmoothing(WifiScanResult current) {
+    if (AppConfig.smoothingWindowSize <= 1) return current;
+    _history.add(current);
+    if (_history.length > AppConfig.smoothingWindowSize) {
+      _history.removeAt(0);
+    }
+    final map = <String, List<int>>{};
+    for (final scan in _history) {
+      for (final ap in scan.accessPoints) {
+        map.putIfAbsent(ap.bssid, () => []).add(ap.rssi);
+      }
+    }
+    final averaged = <WifiReading>[];
+    map.forEach((bssid, list) {
+      final avg = list.reduce((a, b) => a + b) / list.length;
+      averaged.add(WifiReading(bssid: bssid, rssi: avg.round()));
+    });
+    averaged.sort((a, b) => b.rssi.compareTo(a.rssi));
+    return WifiScanResult(
+      deviceId: current.deviceId,
+      timestamp: current.timestamp,
+      accessPoints: averaged,
     );
   }
 

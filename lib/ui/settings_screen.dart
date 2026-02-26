@@ -18,6 +18,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hashMac = true;
   bool _localOnly = true;
 
+  // research mode
+  bool _researchMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final hash = await SettingsService.getHashDeviceMac();
       final local = await SettingsService.getStoreLocalOnly();
       final strat = await SettingsService.getLocalizationStrategy();
+      final research = await SettingsService.getBool('research_mode') ?? false;
       setState(() {
         _continuousScan = cont;
         _scanInterval = interval.toDouble();
@@ -39,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _hashMac = hash;
         _localOnly = local;
         _strategy = strat;
+        _researchMode = research;
       });
     } catch (_) {}
   }
@@ -50,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await SettingsService.setHashDeviceMac(_hashMac);
     await SettingsService.setStoreLocalOnly(_localOnly);
     await SettingsService.setLocalizationStrategy(_strategy);
+    await SettingsService.setBool('research_mode', _researchMode);
   }
 
   @override
@@ -141,6 +147,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: _localOnly,
                     title: const Text('ذخیره داده‌ها فقط در دستگاه'),
                     onChanged: (v) => setState(() => _localOnly = v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('تنظیمات پژوهشی', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SwitchListTile(
+                    value: _researchMode,
+                    title: const Text('حالت پژوهشی'),
+                    subtitle: const Text('نمایش متریک‌های پیشرفته و اشکال‌زدایی'),
+                    onChanged: (v) => setState(() => _researchMode = v),
                   ),
                 ],
               ),

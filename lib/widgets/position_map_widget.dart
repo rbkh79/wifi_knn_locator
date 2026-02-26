@@ -34,6 +34,13 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
   late AnimationController _radarController;
   LatLng? _mapCenter;
 
+  /// allows parent to programmatically recenter
+  void centerOnCurrent() {
+    if (_mapCenter != null) {
+      _mapController.move(_mapCenter!, 17);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -185,7 +192,10 @@ class _PositionMapWidgetState extends State<PositionMapWidget>
           child: FloatingActionButton(
             mini: true,
             onPressed: () {
-              if (_mapCenter != null) _mapController.move(_mapCenter!, 17);
+              if (_mapCenter != null) {
+                _mapController.move(_mapCenter!, 17);
+              }
+              widget.onCenterPressed?.call();
             },
             child: const Icon(Icons.my_location),
           ),
