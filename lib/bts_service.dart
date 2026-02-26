@@ -3,6 +3,9 @@ import 'package:latlong2/latlong.dart';
 
 import 'cell_scanner.dart';
 import 'database_helper.dart';
+import 'data_model.dart';
+
+// ensure CellScanResult and CellTowerInfo are visible
 
 /// سرویس موقعیت‌یابی مبتنی بر BTS
 class BTSService {

@@ -28,7 +28,7 @@ class MapScreen extends StatelessWidget {
         point: pos,
         width: 40,
         height: 40,
-        builder: (_) => Icon(Icons.location_on, color: color, size: 36),
+        child: Icon(Icons.location_on, color: color, size: 36),
       ));
     }
 
@@ -41,12 +41,12 @@ class MapScreen extends StatelessWidget {
       children: [
         FlutterMap(
           options: MapOptions(onTap: (p, latlng) => onTap?.call()),
-          layers: [
-            TileLayerOptions(
+          children: [
+            TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.localization',
             ),
-            MarkerLayerOptions(markers: markers),
+            MarkerLayer(markers: markers),
           ],
         ),
         Positioned(

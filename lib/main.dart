@@ -8,6 +8,8 @@ import 'bts_service.dart';
 import 'hybrid_fusion_service.dart';
 import 'map_screen.dart';
 import 'error_analysis_widget.dart';
+import 'data_model.dart'; // for WifiScanResult
+import 'cell_scanner.dart'; // for CellScanResult / CellTowerInfo
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -93,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       child: ElevatedButton(
         style:
-            ElevatedButton.styleFrom(primary: selected ? Colors.blue : null),
+            ElevatedButton.styleFrom(backgroundColor: selected ? Colors.blue : null),
         onPressed: () {
           setState(() {
             _environment = label;
@@ -145,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('شبکه‌های وای‌فای شناسایی‌شده', style: Theme.of(context).textTheme.headline6),
+            Text('شبکه‌های وای‌فای شناسایی‌شده', style: Theme.of(context).textTheme.titleLarge),
             Text('تعداد شبکه‌های کشف‌شده: ${res.accessPoints.length}'),
             const SizedBox(height: 8),
             SizedBox(
