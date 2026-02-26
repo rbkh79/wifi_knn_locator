@@ -14,6 +14,7 @@
 /// - نیازی به دسترسی به سرویس‌های خارجی نیست (حریم خصوصی بهتر)
 import 'package:flutter/foundation.dart';
 import '../data_model.dart';
+import '../config.dart';
 import '../local_database.dart';
 import '../knn_localization.dart';
 import '../wifi_scanner.dart';

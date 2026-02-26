@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../data_model.dart';
+import '../config.dart';
 import '../local_database.dart';
 import '../knn_localization.dart';
 import '../cell_scanner.dart';

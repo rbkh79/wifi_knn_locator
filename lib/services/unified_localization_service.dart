@@ -5,6 +5,7 @@
 /// - آستانه‌های هوشمند برای سوئیچ بین محیط‌ها
 import 'package:flutter/foundation.dart';
 import '../data_model.dart';
+import '../config.dart';
 import '../local_database.dart';
 import 'indoor_localization_service.dart';
 import 'outdoor_localization_service.dart';

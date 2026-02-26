@@ -318,6 +318,7 @@ class _SinglePageLocalizationScreenState
                     longitude: selected.longitude,
                     confidence: selected.confidence ?? 0.5,
                     nearestNeighbors: [],
+                    averageDistance: 0,
                   );
                   _environmentType = _mapEnvironmentTypeFromLabel(selected.zoneLabel ?? '');
                 });
@@ -423,43 +424,4 @@ class _SinglePageLocalizationScreenState
     );
   }
 
-  EnvironmentType _mapEnvironmentTypeFromEnum(String envType) {
-    switch (envType) {
-      case 'indoor':
-        return EnvironmentType.indoor;
-      case 'outdoor':
-        return EnvironmentType.outdoor;
-      case 'hybrid':
-        return EnvironmentType.hybrid;
-      default:
-        return EnvironmentType.unknown;
-    }
-  }
-
-  EnvironmentType _mapEnvironmentTypeFromLabel(String label) {
-    switch (label) {
-      case 'داخلی':
-        return EnvironmentType.indoor;
-      case 'خارجی':
-        return EnvironmentType.outdoor;
-      case 'ترکیبی':
-        return EnvironmentType.hybrid;
-      default:
-        return EnvironmentType.unknown;
-    }
-  }
-
-  String _environmentTypeLabel() {
-    switch (_environmentType) {
-      case EnvironmentType.indoor:
-        return 'داخلی';
-      case EnvironmentType.outdoor:
-        return 'خارجی';
-      case EnvironmentType.hybrid:
-        return 'ترکیبی';
-      case EnvironmentType.unknown:
-      default:
-        return 'نامشخص';
-    }
-  }
 }
