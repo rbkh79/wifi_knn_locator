@@ -65,8 +65,6 @@ import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
 import 'ui/app_theme.dart';
 import 'ui/settings_screen.dart';
-import 'ui/signal_results_screen.dart';
-import 'ui/modern_home.dart';
 import 'ui/single_page_home.dart';
 import 'utils/privacy_utils.dart';
 import 'utils/permission_utils.dart';

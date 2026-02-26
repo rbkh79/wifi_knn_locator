@@ -83,36 +83,6 @@ class KnnLocalization {
 
     return estimate;
   }
-    // بررسی قدرت سیگنال Wi-Fi
-    final wifiStrength = _calculateWifiStrength(wifiScan);
-    final hasStrongWifi = wifiStrength >= 0.5; // حداقل 3 AP با RSSI > -80
-    final hasWifi = wifiScan != null && wifiScan.accessPoints.isNotEmpty;
-    final hasCell = cellScan != null && 
-                    (cellScan.servingCell != null || cellScan.neighboringCells.isNotEmpty);
-
-    // تصمیم‌گیری استراتژی
-    if (hasStrongWifi && hasWifi) {
-      // اولویت با Wi-Fi
-      debugPrint('Using Wi-Fi priority mode');
-      return await estimateLocation(wifiScan!, k: k);
-    } else if (hasWifi && hasCell) {
-      // استفاده از هر دو (Hybrid)
-      debugPrint('Using Hybrid mode (Wi-Fi + Cell)');
-      return await _estimateLocationHybrid(wifiScan!, cellScan!, k: k);
-    } else if (hasCell) {
-      // فقط Cell
-      debugPrint('Using Cell-only mode');
-      return await estimateLocationFromCell(cellScan!, k: k);
-    } else if (hasWifi) {
-      // فقط Wi-Fi (حتی اگر ضعیف باشد)
-      debugPrint('Using Wi-Fi-only mode (weak signal)');
-      return await estimateLocation(wifiScan!, k: k);
-    }
-
-    // هیچ سیگنالی در دسترس نیست
-    debugPrint('No signals available for localization');
-    return null;
-  }
 
   /// محاسبه قدرت نسبی سیگنال Wi-Fi (0.0 تا 1.0)
   double _calculateWifiStrength(WifiScanResult? wifiScan) {

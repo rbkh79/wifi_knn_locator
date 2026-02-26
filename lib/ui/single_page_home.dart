@@ -27,7 +27,6 @@ enum ScanState { idle, scanning, success, error }
 
 class _SinglePageLocalizationScreenState
     extends State<SinglePageLocalizationScreen> with WidgetsBindingObserver {
-  final GlobalKey<_PositionMapWidgetState> _mapKey = GlobalKey();
   // حالت اسکن
   ScanState _scanState = ScanState.idle;
   bool _isScanning = false;
@@ -59,7 +58,7 @@ class _SinglePageLocalizationScreenState
   late UnifiedLocalizationService _localizationService;
   late LocalDatabase _database;
 
-  // Global key for map widget centering
+  // Global key برای nقشه (dynamic)
   final GlobalKey<dynamic> _mapKey = GlobalKey();
 
   @override
@@ -318,6 +317,7 @@ class _SinglePageLocalizationScreenState
                     latitude: selected.latitude,
                     longitude: selected.longitude,
                     confidence: selected.confidence ?? 0.5,
+                    nearestNeighbors: [],
                   );
                   _environmentType = _mapEnvironmentTypeFromLabel(selected.zoneLabel ?? '');
                 });
@@ -370,9 +370,9 @@ class _SinglePageLocalizationScreenState
                 onScan: _performScan,
                 onSave: _savePosition,
                 researchMode: _researchMode,
-                scanLatencyMs: _lastScanLatencyMs,
-                signalCount: _lastSignalCount,
-                kUsed: _currentK,
+                scanLatencyMs: _scanLatencyMs,
+                signalCount: _activeSignalCount,
+                kUsed: _kUsed ?? _currentK,
               ),
             ),
           ],
@@ -421,5 +421,45 @@ class _SinglePageLocalizationScreenState
             )
           : Icon(icon),
     );
+  }
+
+  EnvironmentType _mapEnvironmentTypeFromEnum(String envType) {
+    switch (envType) {
+      case 'indoor':
+        return EnvironmentType.indoor;
+      case 'outdoor':
+        return EnvironmentType.outdoor;
+      case 'hybrid':
+        return EnvironmentType.hybrid;
+      default:
+        return EnvironmentType.unknown;
+    }
+  }
+
+  EnvironmentType _mapEnvironmentTypeFromLabel(String label) {
+    switch (label) {
+      case 'داخلی':
+        return EnvironmentType.indoor;
+      case 'خارجی':
+        return EnvironmentType.outdoor;
+      case 'ترکیبی':
+        return EnvironmentType.hybrid;
+      default:
+        return EnvironmentType.unknown;
+    }
+  }
+
+  String _environmentTypeLabel() {
+    switch (_environmentType) {
+      case EnvironmentType.indoor:
+        return 'داخلی';
+      case EnvironmentType.outdoor:
+        return 'خارجی';
+      case EnvironmentType.hybrid:
+        return 'ترکیبی';
+      case EnvironmentType.unknown:
+      default:
+        return 'نامشخص';
+    }
   }
 }
