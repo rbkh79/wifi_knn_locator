@@ -991,7 +991,6 @@ class _MyAppState extends State<MyApp> {
       routes: {
         '/home': (c) => SinglePageLocalizationScreen(),
         '/settings': (c) => SettingsScreen(),
-        '/signals': (c) => SignalResultsScreen(),
       },
     );
   }
