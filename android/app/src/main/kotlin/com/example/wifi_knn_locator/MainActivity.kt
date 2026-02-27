@@ -8,8 +8,6 @@ import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoWcdma
-import android.telephony.CellInfoNr
-import android.telephony.CellIdentityNr
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -43,17 +41,12 @@ class MainActivity: FlutterActivity() {
 
         val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        // بررسی مجوز Location (برای Android 10+ الزامی است)
+        // بررسی مجوز
         if (ActivityCompat.checkSelfPermission(
                 this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_COARSE_LOCATION
+                Manifest.permission.READ_PHONE_STATE
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            Log.w("MainActivity", "Location permission not granted for cell info")
             return null
         }
 
@@ -161,23 +154,9 @@ class MainActivity: FlutterActivity() {
                         "networkType" to "GSM"
                     )
                 }
-                is CellInfoNr -> {
-                    // 5G NR support
-                    val cellIdentity = try { cellInfo.cellIdentity as CellIdentityNr } catch (ex: Exception) { null }
-                    val cellSignalStrength = cellInfo.cellSignalStrength
-                    if (cellIdentity == null) return null
-                    mapOf(
-                        "cellId" to try { cellIdentity.nci } catch (e: Exception) { null },
-                        "tac" to try { cellIdentity.tac } catch (e: Exception) { null },
-                        // CellIdentityNr exposes MCC/MNC as strings (mccString/mncString)
-                        "mcc" to try { cellIdentity.mccString?.toInt() } catch (e: Exception) { null },
-                        "mnc" to try { cellIdentity.mncString?.toInt() } catch (e: Exception) { null },
-                        "signalStrength" to try { cellSignalStrength.dbm } catch (e: Exception) { null },
-                        "networkType" to "NR",
-                        "pci" to try { cellIdentity.pci } catch (e: Exception) { null }
-                    )
-                }
                 else -> {
+                    // برای CellInfoNr و سایر انواع، فعلاً پشتیبانی نمی‌کنیم
+                    // چون APIهای آنها در همه نسخه‌ها موجود نیست
                     null
                 }
             }

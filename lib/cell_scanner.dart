@@ -2,88 +2,54 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-
 import 'data_model.dart';
 import 'utils/privacy_utils.dart';
-import 'services/location_service.dart';
 
-/// ماژول اسکن دکل‌های مخابراتی (BTS)
-///
-/// - مجوز Location + READ_PHONE_STATE (در عمل برای Android 10+ مهم‌تر Location است)
-/// - داده دکل‌های فعال از Android TelephonyManager (MethodChannel) خوانده می‌شود.
-/// - خروجی: cellId, lac, tac, signalStrength, mcc, mnc + نام اپراتور ایرانی
+/// ماژول اسکن دکل‌های مخابراتی (Cell Towers)
+/// 
+/// این ماژول اطلاعات دکل‌های متصل و همسایه را از Android TelephonyManager استخراج می‌کند
+/// بدون نیاز به GPS - فقط بر اساس سیگنال‌های رادیویی
 class CellScanner {
-  static const MethodChannel _channel =
-      MethodChannel('wifi_knn_locator/cell_info');
+  static const MethodChannel _channel = MethodChannel('wifi_knn_locator/cell_info');
 
-  /// درخواست مجوزهای لازم برای اسکن سلولی
+  /// درخواست مجوزهای لازم برای دسترسی به اطلاعات تلفن
   static Future<bool> requestPermissions() async {
-    if (!Platform.isAndroid) return true;
-    try {
-      // Request fine location first (required on Android 10+ for cell info)
-      final locStatus = await Permission.location.request();
-
-      // Request phone state to read operator/MCC/MNC
+    if (Platform.isAndroid) {
+      // برای Android 12+ (API 31+), READ_PHONE_STATE نیاز است
       final phoneStatus = await Permission.phone.request();
-
-      // If any permission is permanently denied, we cannot proceed programmatically
-      if (locStatus.isPermanentlyDenied || phoneStatus.isPermanentlyDenied) {
-        debugPrint('CellScanner: Permission permanently denied; ask user to open app settings');
+      if (!phoneStatus.isGranted) {
+        debugPrint('Phone permission denied');
         return false;
       }
-
-      final granted = locStatus.isGranted && phoneStatus.isGranted;
-      if (!granted) {
-        debugPrint('CellScanner: Location/Phone permissions not granted for cell scanning');
-      }
-      return granted;
-    } catch (e) {
-      debugPrint('CellScanner: Error requesting permissions: $e');
-      return false;
     }
+    return true;
   }
 
   /// بررسی وضعیت مجوزها
   static Future<bool> checkPermissions() async {
-    if (!Platform.isAndroid) return false;
-    final loc = await Permission.location.status;
-    final phone = await Permission.phone.status;
-    return loc.isGranted && phone.isGranted;
+    if (Platform.isAndroid) {
+      final phoneStatus = await Permission.phone.status;
+      return phoneStatus.isGranted;
+    }
+    return false; // فقط Android پشتیبانی می‌شود
   }
 
   /// اجرای اسکن دکل‌های مخابراتی
-  ///
-  /// 1. بررسی/درخواست مجوزهای Location + Phone
-  /// 2. بررسی فعال بودن Location Service
-  /// 3. فراخوانی native برای getCellInfo
+  /// 
+  /// این متد:
+  /// 1. مجوزها را بررسی می‌کند
+  /// 2. اطلاعات دکل متصل (Serving Cell) را دریافت می‌کند
+  /// 3. اطلاعات دکل‌های همسایه (Neighboring Cells) را دریافت می‌کند
+  /// 4. CellScanResult را برمی‌گرداند
   static Future<CellScanResult> performScan() async {
-    final deviceId = await PrivacyUtils.getDeviceId();
-
-    if (!Platform.isAndroid) {
-      debugPrint('CellScanner: Only Android is supported for BTS scanning');
-      return CellScanResult(
-        deviceId: deviceId,
-        timestamp: DateTime.now(),
-        neighboringCells: [],
-      );
-    }
-
-    // Android 10+ نیاز به Location Service روشن دارد
-    final locEnabled = await LocationService.isLocationServiceEnabled();
-    if (!locEnabled) {
-      debugPrint(
-          'CellScanner: Location service is disabled. Enable it to access cell info.');
-      return CellScanResult(
-        deviceId: deviceId,
-        timestamp: DateTime.now(),
-        neighboringCells: [],
-      );
-    }
-
-    bool hasPermission = await checkPermissions();
+    // بررسی مجوزها
+    final hasPermission = await checkPermissions();
     if (!hasPermission) {
       final granted = await requestPermissions();
       if (!granted) {
+        debugPrint('Phone permission not granted for cell scanning');
+        // بازگرداندن نتیجه خالی
+        final deviceId = await PrivacyUtils.getDeviceId();
         return CellScanResult(
           deviceId: deviceId,
           timestamp: DateTime.now(),
@@ -92,12 +58,25 @@ class CellScanner {
       }
     }
 
+    // دریافت شناسه دستگاه
+    final deviceId = await PrivacyUtils.getDeviceId();
+
+    // فقط Android پشتیبانی می‌شود
+    if (!Platform.isAndroid) {
+      debugPrint('Cell scanning is only supported on Android');
+      return CellScanResult(
+        deviceId: deviceId,
+        timestamp: DateTime.now(),
+        neighboringCells: [],
+      );
+    }
+
     try {
-      final result =
-          await _channel.invokeMethod<Map<dynamic, dynamic>>('getCellInfo');
+      // فراخوانی متد native برای دریافت اطلاعات دکل‌ها
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getCellInfo');
+      
       if (result == null) {
-        debugPrint(
-            'CellScanner: Native returned null (no cell info or no permission)');
+        debugPrint('No cell info returned from native code');
         return CellScanResult(
           deviceId: deviceId,
           timestamp: DateTime.now(),
@@ -105,24 +84,26 @@ class CellScanner {
         );
       }
 
+      // پارس کردن دکل متصل
       CellTowerInfo? servingCell;
       if (result['serving_cell'] != null) {
-        servingCell =
-            _parseCellInfo(result['serving_cell'] as Map<dynamic, dynamic>);
+        servingCell = _parseCellInfo(result['serving_cell'] as Map<dynamic, dynamic>);
       }
 
+      // پارس کردن دکل‌های همسایه
       final neighboringCells = <CellTowerInfo>[];
       if (result['neighboring_cells'] != null) {
-        final list = result['neighboring_cells'] as List<dynamic>;
-        for (final item in list) {
-          final info = _parseCellInfo(item as Map<dynamic, dynamic>);
-          if (info != null) neighboringCells.add(info);
+        final neighbors = result['neighboring_cells'] as List<dynamic>;
+        for (final neighbor in neighbors) {
+          final cellInfo = _parseCellInfo(neighbor as Map<dynamic, dynamic>);
+          if (cellInfo != null) {
+            neighboringCells.add(cellInfo);
+          }
         }
       }
 
-      debugPrint(
-        'CellScanner: serving=${servingCell != null}, neighbors=${neighboringCells.length}',
-      );
+      debugPrint('Cell scan completed: serving cell=${servingCell != null}, neighbors=${neighboringCells.length}');
+
       return CellScanResult(
         deviceId: deviceId,
         timestamp: DateTime.now(),
@@ -130,14 +111,14 @@ class CellScanner {
         neighboringCells: neighboringCells,
       );
     } on PlatformException catch (e) {
-      debugPrint('CellScanner: PlatformException ${e.code} - ${e.message}');
+      debugPrint('Error scanning cells: ${e.message}');
       return CellScanResult(
         deviceId: deviceId,
         timestamp: DateTime.now(),
         neighboringCells: [],
       );
     } catch (e) {
-      debugPrint('CellScanner: Unexpected error: $e');
+      debugPrint('Unexpected error in cell scan: $e');
       return CellScanResult(
         deviceId: deviceId,
         timestamp: DateTime.now(),
@@ -146,69 +127,64 @@ class CellScanner {
     }
   }
 
-  /// پارس یک دکل از Map برگشتی native (کلیدها: cellId, lac, tac, mcc, mnc, signalStrength)
+  /// پارس کردن اطلاعات یک دکل از Map
   static CellTowerInfo? _parseCellInfo(Map<dynamic, dynamic> map) {
     try {
-      final mcc = _parseInt(map['mcc']);
-      final mnc = _parseInt(map['mnc']);
-      final info = CellTowerInfo(
+      return CellTowerInfo(
         cellId: _parseInt(map['cellId']),
         lac: _parseInt(map['lac']),
         tac: _parseInt(map['tac']),
-        mcc: mcc,
-        mnc: mnc,
+        mcc: _parseInt(map['mcc']),
+        mnc: _parseInt(map['mnc']),
         signalStrength: _parseInt(map['signalStrength']),
         networkType: map['networkType'] as String?,
         psc: _parseInt(map['psc']),
         pci: _parseInt(map['pci']),
       );
-
-      final opName = resolveIranOperator(mcc, mnc);
-      if (opName != null) {
-        debugPrint('CellScanner: operator=$opName, cell=${info.uniqueId}');
-      }
-
-      return info;
     } catch (e) {
-      debugPrint('CellScanner: Parse error: $e');
+      debugPrint('Error parsing cell info: $e');
       return null;
     }
   }
 
+  /// تبدیل مقدار به int (با مدیریت null و String)
   static int? _parseInt(dynamic value) {
     if (value == null) return null;
     if (value is int) return value;
-    if (value is String) return int.tryParse(value);
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      return parsed;
+    }
     if (value is double) return value.toInt();
     return null;
   }
 
-  /// آیا اسکن سلولی روی این دستگاه در دسترس است؟
+  /// بررسی اینکه آیا اسکن دکل در دسترس است
   static Future<bool> isAvailable() async {
     if (!Platform.isAndroid) return false;
-    if (!await LocationService.isLocationServiceEnabled()) return false;
     return await checkPermissions();
   }
 
-  /// اسکن شبیه‌سازی شده برای تست (بدون دستگاه واقعی)
+  /// اسکن شبیه‌سازی شده (برای تست)
   static Future<CellScanResult> performSimulatedScan() async {
     final deviceId = await PrivacyUtils.getDeviceId();
+    
     final servingCell = CellTowerInfo(
       cellId: 12345,
       lac: 100,
-      tac: 200,
       mcc: 432,
       mnc: 11,
       signalStrength: -75,
       networkType: 'LTE',
       pci: 150,
     );
+
     final neighboringCells = [
       CellTowerInfo(
         cellId: 12346,
         lac: 100,
         mcc: 432,
-        mnc: 35,
+        mnc: 11,
         signalStrength: -85,
         networkType: 'LTE',
         pci: 151,
@@ -217,12 +193,13 @@ class CellScanner {
         cellId: 12347,
         tac: 200,
         mcc: 432,
-        mnc: 20,
+        mnc: 11,
         signalStrength: -90,
         networkType: 'LTE',
         pci: 152,
       ),
     ];
+
     return CellScanResult(
       deviceId: deviceId,
       timestamp: DateTime.now(),
@@ -232,28 +209,4 @@ class CellScanner {
   }
 }
 
-/// نگاشت MCC/MNC به اپراتورهای ایرانی
-String? resolveIranOperator(int? mcc, int? mnc) {
-  if (mcc != 432 || mnc == null) return null;
-  switch (mnc) {
-    case 11:
-    case 70:
-      return 'MCI (Hamrah Aval)';
-    case 35:
-      return 'MTN Irancell';
-    case 20:
-      return 'RighTel';
-    case 12:
-      return 'HiWEB';
-    case 32:
-      return 'Taliya';
-    default:
-      return 'Iran MCC 432 / MNC $mnc';
-  }
-}
-
-/// اکستِنشن کمکی برای خواندن نام اپراتور
-extension CellTowerOperatorExt on CellTowerInfo {
-  String? get operatorName => resolveIranOperator(mcc, mnc);
-}
 

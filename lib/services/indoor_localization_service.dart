@@ -14,7 +14,6 @@
 /// - نیازی به دسترسی به سرویس‌های خارجی نیست (حریم خصوصی بهتر)
 import 'package:flutter/foundation.dart';
 import '../data_model.dart';
-import '../config.dart';
 import '../local_database.dart';
 import '../knn_localization.dart';
 import '../wifi_scanner.dart';
@@ -25,14 +24,12 @@ class IndoorLocalizationResult {
   final bool isIndoor;
   final double wifiStrength; // قدرت نسبی سیگنال Wi-Fi (0.0 تا 1.0)
   final int accessPointCount;
-  final int kUsed;
 
   IndoorLocalizationResult({
     this.estimate,
     required this.isIndoor,
     required this.wifiStrength,
     required this.accessPointCount,
-    this.kUsed = AppConfig.defaultK,
   });
 
   /// بررسی اینکه آیا نتیجه قابل اعتماد است
@@ -82,7 +79,6 @@ class IndoorLocalizationService {
           isIndoor: false,
           wifiStrength: wifiStrength,
           accessPointCount: accessPointCount,
-          kUsed: k,
         );
       }
 
@@ -104,7 +100,6 @@ class IndoorLocalizationService {
         isIndoor: true,
         wifiStrength: wifiStrength,
         accessPointCount: accessPointCount,
-        kUsed: k,
       );
     } catch (e) {
       debugPrint('Error in indoor localization: $e');
@@ -112,7 +107,6 @@ class IndoorLocalizationService {
         isIndoor: false,
         wifiStrength: 0.0,
         accessPointCount: 0,
-        kUsed: k,
       );
     }
   }

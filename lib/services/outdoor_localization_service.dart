@@ -1,42 +1,52 @@
-import 'dart:math' as math;
+/// سرویس مکان‌یابی خارجی (Outdoor Localization Service)
+/// 
+/// این سرویس برای مکان‌یابی در محیط‌های باز (Outdoor) طراحی شده است
+/// و به صورت کاملاً GPS-Free عمل می‌کند.
+/// 
+/// روش کار:
+/// - از اطلاعات دکل‌های مخابراتی (Cell Towers) استفاده می‌کند
+/// - Cell ID، LAC/TAC، MCC، MNC و قدرت سیگنال را استخراج می‌کند
+/// - الگوریتم KNN برای تخمین موقعیت به کار می‌رود
+/// - پایگاه داده آفلاین SQLite برای ذخیره اثرانگشت‌های سلولی
+/// 
+/// چرا GPS-Free؟
+/// - در برخی شرایط، GPS در دسترس نیست یا دقت پایینی دارد
+/// - Cell-based localization می‌تواند به عنوان جایگزین یا مکمل عمل کند
+/// - نیازی به دسترسی به سرویس‌های خارجی نیست (حریم خصوصی بهتر)
+/// - برای محیط‌های شهری که دکل‌های مخابراتی فراوان هستند مناسب است
+/// 
+/// محدودیت‌ها:
+/// - دقت در حد ناحیه‌ای (Coarse-Grained) است (معمولاً 50-500 متر)
+/// - نیاز به جمع‌آوری اثرانگشت‌های سلولی در مرحله آموزش دارد
+/// - در مناطق روستایی با دکل‌های کم، دقت کاهش می‌یابد
 import 'package:flutter/foundation.dart';
 import '../data_model.dart';
-import '../config.dart';
 import '../local_database.dart';
 import '../knn_localization.dart';
 import '../cell_scanner.dart';
 
-/// نتیجه مکان‌یابی خارجی (Outdoor)
+/// نتیجه مکان‌یابی خارجی
 class OutdoorLocalizationResult {
   final LocationEstimate? estimate;
   final bool isOutdoor;
-  final int cellTowerCount;
-  final double averageSignalStrength;
-  /// واریانس قدرت سیگنال (پایین = پایدارتر، اعتماد بالاتر)
-  final double signalVariance;
-  final int kUsed;
+  final int cellTowerCount; // تعداد دکل‌های شناسایی شده
+  final double averageSignalStrength; // میانگین قدرت سیگنال
 
   OutdoorLocalizationResult({
     this.estimate,
     required this.isOutdoor,
     required this.cellTowerCount,
     required this.averageSignalStrength,
-    this.signalVariance = 0.0,
-    this.kUsed = AppConfig.defaultK,
   });
 
+  /// بررسی اینکه آیا نتیجه قابل اعتماد است
   bool get isReliable =>
       estimate != null &&
-      estimate!.confidence >= 0.2 &&
+      estimate!.confidence >= 0.2 && // آستانه پایین‌تر برای Outdoor
       cellTowerCount >= 1;
 }
 
-/// سرویس مکان‌یابی خارجی مبتنی بر دکل‌های مخابراتی (BTS)
-///
-/// - KNN روی اثرانگشت‌های سلولی
-/// - فاصله = تفاوت سیگنال دکل‌های مشترک (وزن‌دار)
-/// - موقعیت = میانگین وزن‌دار نزدیک‌ترین اثرانگشت‌ها
-/// - اعتماد = تابعی از تعداد دکل‌های مشترک و واریانس سیگنال
+/// سرویس مکان‌یابی خارجی
 class OutdoorLocalizationService {
   final LocalDatabase _database;
   final KnnLocalization _knnLocalization;
@@ -44,13 +54,22 @@ class OutdoorLocalizationService {
   OutdoorLocalizationService(this._database)
       : _knnLocalization = KnnLocalization(_database);
 
-  /// انجام مکان‌یابی خارجی
-  ///
-  /// [k]: تعداد همسایه‌های KNN (پیش‌فرض 3)
+  /// انجام مکان‌یابی خارجی بر اساس اسکن دکل‌های مخابراتی
+  /// 
+  /// این متد:
+  /// 1. اسکن دکل‌های مخابراتی را انجام می‌دهد
+  /// 2. اطلاعات دکل متصل (Serving Cell) و همسایه‌ها را جمع‌آوری می‌کند
+  /// 3. با استفاده از KNN موقعیت را تخمین می‌زند
+  /// 4. نتیجه را با ضریب اطمینان برمی‌گرداند
+  /// 
+  /// [k]: تعداد همسایه‌های نزدیک برای الگوریتم KNN (پیش‌فرض: 3)
+  /// 
+  /// Returns: OutdoorLocalizationResult شامل تخمین موقعیت و اطلاعات محیط
   Future<OutdoorLocalizationResult> performOutdoorLocalization({
     int k = 3,
   }) async {
     try {
+      // بررسی اینکه آیا Cell Scanner در دسترس است
       final isAvailable = await CellScanner.isAvailable();
       if (!isAvailable) {
         debugPrint('Outdoor localization: Cell scanner not available');
@@ -61,7 +80,10 @@ class OutdoorLocalizationService {
         );
       }
 
+      // انجام اسکن دکل‌های مخابراتی
       final cellScan = await CellScanner.performScan();
+
+      // جمع‌آوری تمام دکل‌ها (متصل + همسایه)
       final allCells = cellScan.allCells;
 
       if (allCells.isEmpty) {
@@ -73,59 +95,41 @@ class OutdoorLocalizationService {
         );
       }
 
-      final avgSignal = _averageSignalStrength(allCells);
-      final variance = _signalVariance(allCells);
+      // محاسبه میانگین قدرت سیگنال
+      final avgSignal = _calculateAverageSignalStrength(allCells);
       final cellTowerCount = allCells.length;
+
+      // بررسی اینکه آیا محیط Outdoor است یا نه
+      // معیار: حداقل یک دکل شناسایی شده
       final isOutdoor = cellTowerCount >= 1;
 
       if (!isOutdoor) {
+        debugPrint('Outdoor localization: Not enough cell towers for outdoor localization');
         return OutdoorLocalizationResult(
           isOutdoor: false,
           cellTowerCount: cellTowerCount,
           averageSignalStrength: avgSignal,
-          signalVariance: variance,
-          kUsed: k,
         );
       }
 
+      // تخمین موقعیت با استفاده از KNN (فقط Cell)
       final estimate = await _knnLocalization.estimateLocationFromCell(
         cellScan,
         k: k,
       );
 
-      // اعتماد نهایی: ترکیب اعتماد KNN با عامل دکل (تعداد دکل + واریانس سیگنال)
-      double confidence = estimate?.confidence ?? 0.0;
-      final towerFactor = _towerCountConfidenceFactor(cellTowerCount);
-      final varianceFactor = _varianceConfidenceFactor(variance);
-      final cellConfidence = (towerFactor * 0.5 + varianceFactor * 0.5);
-      confidence = (confidence * 0.6 + cellConfidence * 0.4).clamp(0.0, 1.0);
-
-      LocationEstimate? adjustedEstimate;
-      if (estimate != null) {
-        adjustedEstimate = LocationEstimate(
-          latitude: estimate.latitude,
-          longitude: estimate.longitude,
-          confidence: confidence,
-          zoneLabel: estimate.zoneLabel,
-          nearestNeighbors: estimate.nearestNeighbors,
-          averageDistance: estimate.averageDistance,
-        );
-      }
-
       debugPrint(
-        'Outdoor localization: Cells=$cellTowerCount, '
+        'Outdoor localization completed: '
+        'Cells=${cellTowerCount}, '
         'AvgSignal=${avgSignal.toStringAsFixed(1)} dBm, '
-        'Variance=${variance.toStringAsFixed(1)}, '
-        'Confidence=${confidence.toStringAsFixed(2)}',
+        'Confidence=${estimate?.confidence.toStringAsFixed(2) ?? "N/A"}',
       );
 
       return OutdoorLocalizationResult(
-        estimate: adjustedEstimate,
+        estimate: estimate,
         isOutdoor: true,
         cellTowerCount: cellTowerCount,
         averageSignalStrength: avgSignal,
-        signalVariance: variance,
-        kUsed: k,
       );
     } catch (e) {
       debugPrint('Error in outdoor localization: $e');
@@ -133,48 +137,33 @@ class OutdoorLocalizationService {
         isOutdoor: false,
         cellTowerCount: 0,
         averageSignalStrength: 0.0,
-        kUsed: k,
       );
     }
   }
 
-  double _averageSignalStrength(List<CellTowerInfo> cells) {
+  /// محاسبه میانگین قدرت سیگنال دکل‌ها
+  double _calculateAverageSignalStrength(List<CellTowerInfo> cells) {
     if (cells.isEmpty) return 0.0;
+
     final signals = cells
-        .where((c) => c.signalStrength != null)
-        .map((c) => c.signalStrength!.toDouble())
+        .where((cell) => cell.signalStrength != null)
+        .map((cell) => cell.signalStrength!.toDouble())
         .toList();
+
     if (signals.isEmpty) return 0.0;
+
     return signals.reduce((a, b) => a + b) / signals.length;
   }
 
-  /// واریانس قدرت سیگنال (dBm). هرچه کمتر، سیگنال پایدارتر و اعتماد بیشتر.
-  double _signalVariance(List<CellTowerInfo> cells) {
-    final signals = cells
-        .where((c) => c.signalStrength != null)
-        .map((c) => c.signalStrength!.toDouble())
-        .toList();
-    if (signals.length < 2) return 0.0;
-    final mean = signals.reduce((a, b) => a + b) / signals.length;
-    final variance = signals.map((s) => (s - mean) * (s - mean)).reduce((a, b) => a + b) / signals.length;
-    return math.sqrt(variance);
-  }
-
-  /// ضریب اعتماد بر اساس تعداد دکل: بیشتر دکل => اعتماد بیشتر
-  double _towerCountConfidenceFactor(int count) {
-    if (count <= 0) return 0.0;
-    return (count / 5.0).clamp(0.0, 1.0);
-  }
-
-  /// ضریب اعتماد بر اساس واریانس سیگنال: واریانس کم => اعتماد بیشتر
-  double _varianceConfidenceFactor(double variance) {
-    if (variance <= 0) return 1.0;
-    return (1.0 / (1.0 + variance / 15.0)).clamp(0.0, 1.0);
-  }
-
+  /// بررسی اینکه آیا محیط Outdoor است یا نه
+  /// 
+  /// این متد بر اساس تعداد و قدرت سیگنال دکل‌های مخابراتی تصمیم می‌گیرد
+  /// که آیا کاربر در محیط باز (Outdoor) است یا نه.
   Future<bool> isOutdoorEnvironment() async {
     try {
-      if (!await CellScanner.isAvailable()) return false;
+      final isAvailable = await CellScanner.isAvailable();
+      if (!isAvailable) return false;
+
       final cellScan = await CellScanner.performScan();
       return cellScan.allCells.isNotEmpty;
     } catch (e) {
@@ -183,3 +172,4 @@ class OutdoorLocalizationService {
     }
   }
 }
+

@@ -5,7 +5,6 @@ import 'config.dart';
 import 'local_database.dart';
 import 'services/prediction_service.dart';
 import 'utils/rssi_filter.dart';
-import 'utils/profiler.dart';
 
 /// پیاده‌سازی الگوریتم KNN برای تخمین موقعیت (Hybrid: Wi-Fi + Cell)
 class KnnLocalization {
@@ -24,64 +23,35 @@ class KnnLocalization {
     CellScanResult? cellScan,
     int k = AppConfig.defaultK,
   }) async {
-    final db = _database;
-    final swOverall = Stopwatch()..start();
-    final memBefore = Profiler.currentMemoryUsageKb();
-
+    // بررسی قدرت سیگنال Wi-Fi
     final wifiStrength = _calculateWifiStrength(wifiScan);
-    final hasStrongWifi = wifiStrength >= 0.5;
+    final hasStrongWifi = wifiStrength >= 0.5; // حداقل 3 AP با RSSI > -80
     final hasWifi = wifiScan != null && wifiScan.accessPoints.isNotEmpty;
-    final hasCell = cellScan != null &&
+    final hasCell = cellScan != null && 
                     (cellScan.servingCell != null || cellScan.neighboringCells.isNotEmpty);
 
-    String envType = 'unknown';
-    LocationEstimate? estimate;
-
+    // تصمیم‌گیری استراتژی
     if (hasStrongWifi && hasWifi) {
-      envType = 'indoor';
+      // اولویت با Wi-Fi
       debugPrint('Using Wi-Fi priority mode');
-      estimate = await estimateLocation(wifiScan!, k: k);
+      return await estimateLocation(wifiScan!, k: k);
     } else if (hasWifi && hasCell) {
-      envType = 'hybrid';
+      // استفاده از هر دو (Hybrid)
       debugPrint('Using Hybrid mode (Wi-Fi + Cell)');
-      estimate = await _estimateLocationHybrid(wifiScan!, cellScan!, k: k);
+      return await _estimateLocationHybrid(wifiScan!, cellScan!, k: k);
     } else if (hasCell) {
-      envType = 'outdoor';
+      // فقط Cell
       debugPrint('Using Cell-only mode');
-      estimate = await estimateLocationFromCell(cellScan!, k: k);
+      return await estimateLocationFromCell(cellScan!, k: k);
     } else if (hasWifi) {
-      envType = 'indoor';
+      // فقط Wi-Fi (حتی اگر ضعیف باشد)
       debugPrint('Using Wi-Fi-only mode (weak signal)');
-      estimate = await estimateLocation(wifiScan!, k: k);
+      return await estimateLocation(wifiScan!, k: k);
     }
 
-    swOverall.stop();
-    final memAfter = Profiler.currentMemoryUsageKb();
-    final duration = swOverall.elapsedMilliseconds;
-
-    // log performance
-    await _logPerformance('knn_overall', duration);
-
-    if (AppConfig.logEstimationDetails && estimate != null) {
-      final distances = _extractDistancesFromEstimate(estimate);
-      final variance = _computeVariance(distances);
-      final consistency = _computeConsistency(distances);
-      final logEntry = EstimationLogEntry(
-        deviceId: wifiScan?.deviceId ?? cellScan?.deviceId ?? '',
-        timestamp: DateTime.now(),
-        environmentType: envType,
-        rawDistances: distances,
-        kUsed: k,
-        alphaUsed: AppConfig.wifiWeightAlpha,
-        scanDurationMs: duration,
-        memoryUsageKb: memAfter - memBefore,
-        distanceVariance: variance,
-        neighborConsistency: consistency,
-      );
-      await db.insertEstimationLog(logEntry);
-    }
-
-    return estimate;
+    // هیچ سیگنالی در دسترس نیست
+    debugPrint('No signals available for localization');
+    return null;
   }
 
   /// محاسبه قدرت نسبی سیگنال Wi-Fi (0.0 تا 1.0)
@@ -267,9 +237,8 @@ class KnnLocalization {
   /// محاسبه فاصله ترکیبی از Wi-Fi و Cell
   double _calculateCombinedDistance(double? wifiDistance, double? cellDistance) {
     if (wifiDistance != null && cellDistance != null) {
-      // ترکیب α برای Wi‑Fi و (1-α) برای Cell
-      final alpha = AppConfig.wifiWeightAlpha.clamp(0.0, 1.0);
-      return wifiDistance * alpha + cellDistance * (1 - alpha);
+      // ترکیب وزن‌دار: Wi-Fi 60%, Cell 40%
+      return wifiDistance * 0.6 + cellDistance * 0.4;
     } else if (wifiDistance != null) {
       return wifiDistance;
     } else if (cellDistance != null) {
@@ -290,49 +259,44 @@ class KnnLocalization {
     WifiScanResult scanResult, {
     int k = AppConfig.defaultK,
   }) async {
-    final db = _database;
-    final sw = Stopwatch()..start();
-
-    // نرمال‌سازی و فیلتر میانگین متحرک اگر فعال باشد
-    final processedScan = _preprocessScan(scanResult);
-
     // بارگذاری اثرانگشت‌ها
-    final fingerprints = await db.getAllFingerprints();
+    final fingerprints = await _database.getAllFingerprints();
     
     if (fingerprints.isEmpty) {
       return null;
     }
 
     // بررسی حداقل تعداد AP
-    if (processedScan.accessPoints.length < AppConfig.minApCountForEvaluation) {
+    if (scanResult.accessPoints.length < AppConfig.minApCountForEvaluation) {
+      // ممکن است یک outage (قطع سیگنال) باشد؛ سعی می‌کنیم از PredictionService استفاده کنیم
       try {
-        final deviceId = processedScan.deviceId;
-        final predictionService = PredictionService(db);
+        final deviceId = scanResult.deviceId ?? '';
+        final predictionService = PredictionService(_database);
         final preds = await predictionService.predictDuringOutage(deviceId: deviceId, steps: 1);
         if (preds.isNotEmpty) {
+          // بازگرداندن اولین پیش‌بینی با نشانه‌ای از پیش‌بینی (confidence ممکن است پایین باشد)
           return preds.first;
         }
-      } catch (e) {}
+      } catch (e) {
+        // اگر پیش‌بینی شکست خورد، به رفتار قبلی برمی‌گردیم (null)
+      }
 
       return null;
     }
 
     // محاسبه فاصله‌ها
     final distances = <DistanceRecord>[];
+    
     for (int i = 0; i < fingerprints.length; i++) {
       final fingerprint = fingerprints[i];
-      final distance = _calculateDistance(processedScan.accessPoints, fingerprint.accessPoints);
+      final distance = _calculateDistance(scanResult.accessPoints, fingerprint.accessPoints);
+      
       distances.add(DistanceRecord(
         distance: distance,
         fingerprint: fingerprint,
         index: i,
       ));
     }
-
-    sw.stop();
-    await _logPerformance('knn_distance_calc', sw.elapsedMilliseconds);
-
-    // حالا با لیست `distances` ادامه می‌دهیم (داده‌ها قبلاً محاسبه شده‌اند)
 
     // مرتب‌سازی بر اساس فاصله
     distances.sort((a, b) => a.distance.compareTo(b.distance));
@@ -400,52 +364,33 @@ class KnnLocalization {
   /// - وزن بر اساس قدرت RSSI محاسبه می‌شود
   /// - برای BSSID‌های غیرمشترک: مقدار پیش‌فرض (-100) استفاده می‌شود
   double _calculateDistance(List<WifiReading> observed, List<WifiReading> fingerprint) {
-    // اعمال نرمال‌سازی اگر فعال باشد
-    if (AppConfig.normalizeRssiPerDevice) {
-      observed = _normalizeRssiList(observed);
-      fingerprint = _normalizeRssiList(fingerprint);
-    }
-
     // ساخت Map برای دسترسی سریع‌تر
-    final observedMap = <String, double>{};
+    final observedMap = <String, int>{};
     for (final ap in observed) {
-      observedMap[ap.bssid] = ap.rssi.toDouble();
+      observedMap[ap.bssid] = ap.rssi;
     }
 
-    final fingerprintMap = <String, double>{};
+    final fingerprintMap = <String, int>{};
     for (final ap in fingerprint) {
-      fingerprintMap[ap.bssid] = ap.rssi.toDouble();
+      fingerprintMap[ap.bssid] = ap.rssi;
     }
 
     // جمع‌آوری تمام BSSID‌ها (اتحاد دو مجموعه)
     final allBssids = <String>{...observedMap.keys, ...fingerprintMap.keys};
 
+    // محاسبه فاصله اقلیدسی وزن‌دار
     double distance = 0.0;
-    const defaultRssi = -100.0;
-    int missingCount = 0;
-
-    // میانگین RSSI در بردار مشاهده شده (برای استراتژی mean)
-    double observedMean = 0.0;
-    if (observedMap.isNotEmpty) {
-      observedMean = observedMap.values.reduce((a, b) => a + b) / observedMap.length;
-    }
+    const defaultRssi = -100; // مقدار پیش‌فرض برای APهای مشاهده نشده
 
     for (final bssid in allBssids) {
-      double obsRssi;
-      if (observedMap.containsKey(bssid)) {
-        obsRssi = observedMap[bssid]!;
-      } else {
-        missingCount++;
-        if (AppConfig.missingApStrategy == 'mean') {
-          obsRssi = observedMean;
-        } else {
-          obsRssi = defaultRssi;
-        }
-      }
-      final fpRssi = fingerprintMap[bssid] ?? defaultRssi;
-
+      final obsRssi = observedMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
+      final fpRssi = fingerprintMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
+      
       final diff = obsRssi - fpRssi;
+      
+      // وزن‌دهی RSSI (اگر فعال باشد)
       if (AppConfig.useRssiWeighting) {
+        // استفاده از میانگین RSSI برای محاسبه وزن
         final avgRssi = ((obsRssi + fpRssi) / 2).round();
         final weight = RssiFilter.calculateRssiWeight(avgRssi);
         distance += diff * diff * weight;
@@ -454,111 +399,37 @@ class KnnLocalization {
       }
     }
 
-    // sparsity metric could be used later / logged
-    // final sparsity = allBssids.isEmpty ? 0.0 : missingCount / allBssids.length;
-
+    // ریشه دوم فاصله اقلیدسی
     return math.sqrt(distance);
-  }
-
-  /// نرمال‌سازی RSSI به میانگین صفر برای هر بردار
-  List<WifiReading> _normalizeRssiList(List<WifiReading> list) {
-    if (list.isEmpty) return list;
-    final values = list.map((r) => r.rssi.toDouble()).toList();
-    final mean = values.reduce((a, b) => a + b) / values.length;
-    final stddev = math.sqrt(values.map((v) => math.pow(v - mean, 2)).reduce((a, b) => a + b) / values.length);
-    if (stddev == 0) return list;
-    return list
-        .map((r) => WifiReading(bssid: r.bssid, rssi: ((r.rssi - mean) / stddev * 10).round(), frequency: r.frequency, ssid: r.ssid))
-        .toList();
-  }
-
-  /// اجرا و ثبت زمان اجرای یک عملیات
-  Future<void> _logPerformance(String operation, int durationMs) async {
-    if (!AppConfig.logPerformanceMetrics) return;
-    try {
-      final entry = PerformanceLogEntry(
-        deviceId: '',
-        timestamp: DateTime.now(),
-        operation: operation,
-        durationMs: durationMs,
-      );
-      await _database.insertPerformanceLog(entry);
-    } catch (_) {}
-  }
-
-  /// استخراج فواصل خام از یک LocationEstimate برای گزارش
-  List<double> _extractDistancesFromEstimate(LocationEstimate est) {
-    // در این پیاده‌سازی فواصل مستقیماً در estimate ذخیره نشده‌اند،
-    // بنابراین اینجا غیرمستقیم اطراف neighbors را بازسازی می‌کنیم
-    return est.nearestNeighbors.map((_) => est.averageDistance).toList();
-  }
-
-  double _computeVariance(List<double> values) {
-    if (values.length <= 1) return 0.0;
-    final mean = values.reduce((a, b) => a + b) / values.length;
-    final variance = values.map((v) => math.pow(v - mean, 2)).reduce((a, b) => a + b) / values.length;
-    return variance.toDouble();
-  }
-
-  double _computeConsistency(List<double> values) {
-    if (values.isEmpty) return 0.0;
-    if (values.length == 1) return 1.0;
-    final mean = values.reduce((a, b) => a + b) / values.length;
-    final stdDev = math.sqrt(values.map((v) => math.pow(v - mean, 2)).reduce((a, b) => a + b) / values.length);
-    return 1.0 / (1.0 + stdDev / 50.0);
-  }
-
-  /// اعمال پیش‌پردازش روی اسکن (ساده‌سازی، نرمال‌سازی)
-  final List<WifiScanResult> _scanHistory = [];
-
-  WifiScanResult _preprocessScan(WifiScanResult scan) {
-    if (AppConfig.smoothingWindowSize <= 1) return scan;
-
-    _scanHistory.add(scan);
-    if (_scanHistory.length > AppConfig.smoothingWindowSize) {
-      _scanHistory.removeAt(0);
-    }
-
-    // میانگین RSSI برای هر BSSID در تاریخچه
-    final map = <String, List<int>>{};
-    for (final s in _scanHistory) {
-      for (final ap in s.accessPoints) {
-        map.putIfAbsent(ap.bssid, () => []).add(ap.rssi);
-      }
-    }
-
-    final averaged = <WifiReading>[];
-    map.forEach((bssid, list) {
-      final avg = list.reduce((a, b) => a + b) / list.length;
-      averaged.add(WifiReading(bssid: bssid, rssi: avg.round()));
-    });
-
-    return WifiScanResult(
-      deviceId: scan.deviceId,
-      timestamp: scan.timestamp,
-      accessPoints: averaged,
-    );
   }
 
   /// محاسبه ضریب اطمینان
   /// 
-  /// اعتماد = exp(-normalized_distance) ترکیب شده با ثبات
-  /// هر دو فاکتور (فاصله و یکنواختی) لحاظ می‌شود.
+  /// اعتماد بر اساس:
+  /// - میانگین فاصله تا همسایه‌ها (هرچه کمتر، اعتماد بیشتر)
+  /// - یکنواختی فاصله‌ها (هرچه یکنواخت‌تر، اعتماد بیشتر)
   double _calculateConfidence(double avgDistance, List<double> distances) {
     if (distances.isEmpty) return 0.0;
 
-    final normalized = avgDistance / 100.0;
-    final base = math.exp(-normalized);
+    // نرمال‌سازی بر اساس فاصله
+    // فاصله 0 = اعتماد 1.0
+    // فاصله بزرگ = اعتماد نزدیک به 0
+    final normalizedDistance = 1.0 / (1.0 + avgDistance / 100.0); // تقسیم بر 100 برای نرمال‌سازی
 
+    // محاسبه انحراف معیار برای بررسی یکنواختی
     if (distances.length > 1) {
       final mean = avgDistance;
       final variance = distances.map((d) => math.pow(d - mean, 2)).reduce((a, b) => a + b) / distances.length;
       final stdDev = math.sqrt(variance);
+      
+      // هرچه انحراف معیار کمتر باشد، اعتماد بیشتر است
       final consistency = 1.0 / (1.0 + stdDev / 50.0);
-      return (base * 0.6 + consistency * 0.4).clamp(0.0, 1.0);
+      
+      // ترکیب نرمال‌سازی فاصله و یکنواختی
+      return (normalizedDistance * 0.7 + consistency * 0.3).clamp(0.0, 1.0);
     }
 
-    return base.clamp(0.0, 1.0);
+    return normalizedDistance.clamp(0.0, 1.0);
   }
 
   /// تعیین لیبل ناحیه بر اساس اکثریت همسایه‌ها
@@ -657,11 +528,9 @@ class KnnLocalization {
     CellScanResult cellScan, {
     int k = AppConfig.defaultK,
   }) async {
-    final db = _database;
-    final sw = Stopwatch()..start();
-
     // بارگذاری اثرانگشت‌های سلولی
-    final cellFingerprints = await db.getAllCellFingerprints();
+    final cellFingerprints = await _database.getAllCellFingerprints();
+    
     if (cellFingerprints.isEmpty) {
       return null;
     }
@@ -669,17 +538,6 @@ class KnnLocalization {
     final allCells = cellScan.allCells;
     if (allCells.isEmpty) {
       return null;
-    }
-
-    // خوشه‌بندی مناطق TAC/LAC اگر فعال باشد
-    double? clusterLat;
-    double? clusterLon;
-    double? clusterConf;
-    if (AppConfig.enableCellClustering) {
-      final cluster = _clusterObservedCells(allCells, cellFingerprints);
-      clusterLat = cluster['lat'] as double?;
-      clusterLon = cluster['lon'] as double?;
-      clusterConf = cluster['conf'] as double?;
     }
 
     // محاسبه فاصله‌ها
@@ -765,84 +623,16 @@ class KnnLocalization {
       );
     }).toList();
 
-    final estimate = LocationEstimate(
+    return LocationEstimate(
       latitude: estimatedLat,
       longitude: estimatedLon,
       confidence: confidence,
       zoneLabel: zoneLabel,
       nearestNeighbors: neighborFingerprints,
       averageDistance: avgDistance,
-      regionCentroidLat: clusterLat,
-      regionCentroidLon: clusterLon,
-      regionConfidence: clusterConf,
     );
-
-    if (AppConfig.logEstimationDetails) {
-      final variance = _computeVariance(nearestDistances);
-      final consistency = _computeConsistency(nearestDistances);
-      final duration = sw.elapsedMilliseconds;
-      final log = EstimationLogEntry(
-        deviceId: cellScan.deviceId,
-        timestamp: DateTime.now(),
-        environmentType: 'outdoor',
-        rawDistances: nearestDistances,
-        kUsed: k,
-        alphaUsed: AppConfig.wifiWeightAlpha,
-        scanDurationMs: duration,
-        memoryUsageKb: Profiler.currentMemoryUsageKb(),
-        distanceVariance: variance,
-        neighborConsistency: consistency,
-      );
-      await db.insertEstimationLog(log);
-    }
-
-    return estimate;
   }
 
-
-  /// خوشه‌بندی دکل‌های مشاهده‌شده براساس TAC/LAC و یافتن
-  /// "نقاط مرجع" داخلی از پایگاه داده برای آن خوشه.
-  ///
-  /// خروجی: نقشه شامل عرض/طول میانگین و ضریب اطمینان بر اساس
-  /// تعداد دکل‌ها در خوشه نسبت به کل نصب‌شده.
-  Map<String, dynamic> _clusterObservedCells(
-      List<CellTowerInfo> observed, List<CellFingerprintEntry> fingerprints) {
-    if (observed.isEmpty) return {};
-    final groups = <String, List<CellTowerInfo>>{};
-    for (final cell in observed) {
-      final key = 'TAC:${cell.tac ?? -1}|LAC:${cell.lac ?? -1}';
-      groups.putIfAbsent(key, () => []).add(cell);
-    }
-    // بیشترین گروه
-    var best = groups.entries.first;
-    for (final e in groups.entries) {
-      if (e.value.length > best.value.length) best = e;
-    }
-    final count = best.value.length;
-    final total = observed.length;
-    final confidence = total > 0 ? count / total : 0.0;
-
-    // اگر اطلاعات موقعیت در اثرانگشت‌ها موجود باشد، مرکز را محاسبه کن
-    double? lat, lon;
-    var latSum = 0.0, lonSum = 0.0, num = 0;
-    for (final fp in fingerprints) {
-      // بررسی اینکه اثرانگشت شامل هر دکلی از گروه باشد
-      for (final tower in fp.cellTowers) {
-        final key = 'TAC:${tower.tac ?? -1}|LAC:${tower.lac ?? -1}';
-        if (key == best.key) {
-          latSum += fp.latitude;
-          lonSum += fp.longitude;
-          num++;
-          break;
-        }
-      }
-    }
-    if (num > 0) {
-      lat = latSum / num;
-      lon = lonSum / num;
-    }
-    return {'lat': lat, 'lon': lon, 'conf': confidence};
-  }
   /// محاسبه فاصله بین دو بردار Cell Tower
   double _calculateCellDistance(List<CellTowerInfo> observed, List<CellTowerInfo> fingerprint) {
     // ساخت Map برای دسترسی سریع‌تر (بر اساس uniqueId)

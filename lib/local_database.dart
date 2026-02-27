@@ -178,36 +178,6 @@ class LocalDatabase {
     await db.execute('CREATE INDEX idx_cell_tower_fingerprint_id ON cell_towers(fingerprint_id)');
     await db.execute('CREATE INDEX idx_cell_tower_cell_id ON cell_towers(cell_id)');
     await db.execute('CREATE INDEX idx_cell_tower_mcc_mnc ON cell_towers(mcc, mnc)');
-
-    // جدول لاگ‌های تخمین برای پژوهش
-    await db.execute('''
-      CREATE TABLE estimation_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        environment_type TEXT NOT NULL,
-        raw_distances TEXT,
-        k_used INTEGER,
-        alpha_used REAL,
-        scan_duration_ms INTEGER,
-        memory_usage_kb INTEGER,
-        distance_variance REAL,
-        neighbor_consistency REAL
-      )
-    ''');
-    await db.execute('CREATE INDEX idx_estimation_device ON estimation_logs(device_id)');
-
-    // جدول لاگ‌های عملکرد
-    await db.execute('''
-      CREATE TABLE performance_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        duration_ms INTEGER NOT NULL
-      )
-    ''');
-    await db.execute('CREATE INDEX idx_perf_device ON performance_logs(device_id)');
   }
 
   /// به‌روزرسانی پایگاه داده (در صورت تغییر نسخه)
@@ -220,9 +190,6 @@ class LocalDatabase {
     }
     if (oldVersion < 4) {
       await _onUpgradeV4(db);
-    }
-    if (oldVersion < 5) {
-      await _onUpgradeV5(db);
     }
     debugPrint('Database upgrade from $oldVersion to $newVersion');
   }
@@ -340,37 +307,6 @@ class LocalDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_tower_fingerprint_id ON cell_towers(fingerprint_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_tower_cell_id ON cell_towers(cell_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_cell_tower_mcc_mnc ON cell_towers(mcc, mnc)');
-  }
-
-  Future<void> _onUpgradeV5(Database db) async {
-    // اضافه کردن جداول محاسبات پژوهشی
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS estimation_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        environment_type TEXT NOT NULL,
-        raw_distances TEXT,
-        k_used INTEGER,
-        alpha_used REAL,
-        scan_duration_ms INTEGER,
-        memory_usage_kb INTEGER,
-        distance_variance REAL,
-        neighbor_consistency REAL
-      )
-    ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_estimation_device ON estimation_logs(device_id)');
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS performance_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        duration_ms INTEGER NOT NULL
-      )
-    ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_perf_device ON performance_logs(device_id)');
   }
 
   /// افزودن اثرانگشت جدید
@@ -572,39 +508,6 @@ class LocalDatabase {
 
       return scanId;
     });
-  }
-
-  // ===== پژوهش و عملکرد =====
-  /// ثبت یک لاگ تخمین پژوهشی
-  Future<int> insertEstimationLog(EstimationLogEntry log) async {
-    final db = await database;
-    return await db.insert('estimation_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
-  /// بازیابی لاگ‌های تخمین
-  Future<List<EstimationLogEntry>> getEstimationLogs({String? deviceId}) async {
-    final db = await database;
-    final maps = await db.query('estimation_logs',
-        where: deviceId != null ? 'device_id = ?' : null,
-        whereArgs: deviceId != null ? [deviceId] : null,
-        orderBy: 'timestamp DESC');
-    return maps.map((m) => EstimationLogEntry.fromMap(m)).toList();
-  }
-
-  /// ثبت لاگ عملکرد (latency)
-  Future<int> insertPerformanceLog(PerformanceLogEntry log) async {
-    final db = await database;
-    return await db.insert('performance_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
-  /// بازیابی لاگ‌های عملکرد
-  Future<List<PerformanceLogEntry>> getPerformanceLogs({String? deviceId}) async {
-    final db = await database;
-    final maps = await db.query('performance_logs',
-        where: deviceId != null ? 'device_id = ?' : null,
-        whereArgs: deviceId != null ? [deviceId] : null,
-        orderBy: 'timestamp DESC');
-    return maps.map((m) => PerformanceLogEntry.fromMap(m)).toList();
   }
 
   Future<List<WifiScanLog>> getRecentWifiScanLogs({
