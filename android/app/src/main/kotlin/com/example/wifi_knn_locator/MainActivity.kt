@@ -65,12 +65,8 @@ class MainActivity : FlutterActivity() {
                 telephonyManager.requestCellInfoUpdate(
                     mainExecutor,
                     object : TelephonyManager.CellInfoCallback() {
-                        override fun onCellInfo(status: Int, list: MutableList<CellInfo>) {
-                            if (status == TelephonyManager.CellInfoCallback.SUCCESS) {
-                                result.success(processCellInfoList(list))
-                            } else {
-                                result.success(processCellInfoList(telephonyManager.allCellInfo ?: emptyList()))
-                            }
+                        override fun onCellInfo(list: MutableList<CellInfo>) {
+                            result.success(processCellInfoList(list))
                         }
 
                         override fun onError(errorCode: Int, detail: Throwable?) {
