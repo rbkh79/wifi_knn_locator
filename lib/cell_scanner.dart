@@ -15,11 +15,18 @@ class CellScanner {
   /// درخواست مجوزهای لازم برای دسترسی به اطلاعات تلفن
   static Future<bool> requestPermissions() async {
     if (Platform.isAndroid) {
-      // برای Android 12+ (API 31+), READ_PHONE_STATE نیاز است
+      // برای Android 12+ (API 31+)، برای دسترسی به اطلاعات BTS نیاز به ACCESS_FINE_LOCATION است
+      final locationStatus = await Permission.location.request();
+      if (!locationStatus.isGranted) {
+        debugPrint('Location permission denied');
+        return false;
+      }
+      
+      // READ_PHONE_STATE هم برای برخی اطلاعات اضافی مفید است
       final phoneStatus = await Permission.phone.request();
       if (!phoneStatus.isGranted) {
-        debugPrint('Phone permission denied');
-        return false;
+        debugPrint('Phone permission denied (optional)');
+        // ادامه می‌دهیم چون location کافی است
       }
     }
     return true;
@@ -28,8 +35,9 @@ class CellScanner {
   /// بررسی وضعیت مجوزها
   static Future<bool> checkPermissions() async {
     if (Platform.isAndroid) {
-      final phoneStatus = await Permission.phone.status;
-      return phoneStatus.isGranted;
+      // در Android 12+، location برای BTS کافی است
+      final locationStatus = await Permission.location.status;
+      return locationStatus.isGranted;
     }
     return false; // فقط Android پشتیبانی می‌شود
   }
@@ -47,7 +55,7 @@ class CellScanner {
     if (!hasPermission) {
       final granted = await requestPermissions();
       if (!granted) {
-        debugPrint('Phone permission not granted for cell scanning');
+        debugPrint('Location permission not granted for cell scanning');
         // بازگرداندن نتیجه خالی
         final deviceId = await PrivacyUtils.getDeviceId();
         return CellScanResult(
@@ -142,7 +150,7 @@ class CellScanner {
         pci: _parseInt(map['pci']),
       );
     } catch (e) {
-      debugPrint('Error parsing cell info: $e');
+      debugPrint('Error parsing cell info: $e, map: $map');
       return null;
     }
   }
@@ -152,6 +160,7 @@ class CellScanner {
     if (value == null) return null;
     if (value is int) return value;
     if (value is String) {
+      // برای mcc و mnc که ممکن است String باشند
       final parsed = int.tryParse(value);
       return parsed;
     }
