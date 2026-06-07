@@ -8,6 +8,7 @@ import android.os.Build
 import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
+import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -16,65 +17,91 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity: FlutterActivity() {
+class MainActivity : FlutterActivity() {
     private val CHANNEL = "wifi_knn_locator/cell_info"
     private val TAG = "BTS_Service"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "getCellInfo") {
-                val cellInfo = getCellInfo()
-                if (cellInfo != null) {
-                    result.success(cellInfo)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "getCellInfo") {
+                    getCellInfoAsync(result)
                 } else {
-                    result.error("UNAVAILABLE", "Cell info not available", null)
+                    result.notImplemented()
                 }
-            } else {
-                result.notImplemented()
             }
-        }
     }
 
     @SuppressLint("MissingPermission")
-    private fun getCellInfo(): Map<String, Any?>? {
+    private fun getCellInfoAsync(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            Log.w(TAG, "Android version too old: ${Build.VERSION.SDK_INT}")
-            return null
+            result.error("UNSUPPORTED", "Android version too old", null)
+            return
         }
 
         val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        // در Android 12+، برای دسترسی به اطلاعات سلولی نیاز به ACCESS_FINE_LOCATION است
-        val hasLocationPermission = ActivityCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION
+        // چک مجوزها
+        val hasFineLocation = ActivityCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (!hasLocationPermission) {
-            Log.w(TAG, "ACCESS_FINE_LOCATION permission not granted")
-            return null
+        val hasPhoneState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            ActivityCompat.checkSelfPermission(
+                this, Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+        } else true
+
+        if (!hasFineLocation || !hasPhoneState) {
+            Log.w(TAG, "مجوزها ناقص: FINE_LOCATION=$hasFineLocation, PHONE_STATE=$hasPhoneState")
+            result.error("PERMISSION_DENIED", "مجوزهای لازم داده نشده", null)
+            return
         }
 
-        // دریافت اطلاعات دکل‌ها
-        val allCellInfo: List<CellInfo>? = try {
-            telephonyManager.allCellInfo
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception getting cell info: ${e.message}")
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting cell info: ${e.message}", e)
-            null
+        // Android 11+ : باید requestCellInfoUpdate صدا زده بشه
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                telephonyManager.requestCellInfoUpdate(
+                    mainExecutor,
+                    object : TelephonyManager.CellInfoCallback() {
+                        override fun onCellInfo(status: Int, list: MutableList<CellInfo>) {
+                            if (status == TelephonyManager.CellInfoCallback.SUCCESS) {
+                                result.success(processCellInfoList(list))
+                            } else {
+                                result.success(processCellInfoList(telephonyManager.allCellInfo ?: emptyList()))
+                            }
+                        }
+
+                        override fun onError(errorCode: Int, detail: Throwable?) {
+                            Log.e(TAG, "خطا در بروزرسانی CellInfo: $errorCode - $detail")
+                            result.success(processCellInfoList(telephonyManager.allCellInfo ?: emptyList()))
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "خطا در requestCellInfoUpdate: ${e.message}")
+                result.success(processCellInfoList(telephonyManager.allCellInfo ?: emptyList()))
+            }
+        } else {
+            val list = try {
+                telephonyManager.allCellInfo ?: emptyList()
+            } catch (e: Exception) {
+                Log.e(TAG, "خطا در allCellInfo: ${e.message}")
+                emptyList()
+            }
+            result.success(processCellInfoList(list))
+        }
+    }
+
+    private fun processCellInfoList(allCellInfo: List<CellInfo>): Map<String, Any?> {
+        if (allCellInfo.isEmpty()) {
+            Log.w(TAG, "لیست دکل‌ها خالیه")
+            return mapOf("serving_cell" to null, "neighboring_cells" to emptyList<Any>())
         }
 
-        if (allCellInfo == null || allCellInfo.isEmpty()) {
-            Log.w(TAG, "No cell info available")
-            return null
-        }
+        Log.d(TAG, "تعداد ${allCellInfo.size} دکل پیدا شد")
 
-        Log.d(TAG, "Found ${allCellInfo.size} cell info entries")
-
-        // پیدا کردن دکل متصل (اولین دکل که isRegistered = true)
         var servingCell: Map<String, Any?>? = null
         val neighboringCells = mutableListOf<Map<String, Any?>>()
 
@@ -84,17 +111,15 @@ class MainActivity: FlutterActivity() {
                 if (cellData != null) {
                     if (cellInfo.isRegistered) {
                         servingCell = cellData
-                        Log.d(TAG, "Serving cell found: ${cellData["networkType"]}")
+                        Log.d(TAG, "دکل متصل پیدا شد: ${cellData["networkType"]}")
                     } else {
                         neighboringCells.add(cellData)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing cell info: ${e.message}")
+                Log.e(TAG, "خطا در پردازش دکل: ${e.message}")
             }
         }
-
-        Log.d(TAG, "Returning serving cell: ${servingCell != null}, neighbors: ${neighboringCells.size}")
 
         return mapOf(
             "serving_cell" to servingCell,
@@ -107,59 +132,88 @@ class MainActivity: FlutterActivity() {
         return try {
             when (cellInfo) {
                 is CellInfoLte -> {
-                    val cellIdentity = cellInfo.cellIdentity
-                    val cellSignalStrength = cellInfo.cellSignalStrength
-                    
+                    val id = cellInfo.cellIdentity
+                    val ci = id.ci
+                    if (ci == Int.MAX_VALUE || ci <= 0) return null
+
+                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mccString else id.mcc?.toString()
+                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mncString else id.mnc?.toString()
+                    val tac = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.tac else null
+                    val pci = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.pci else null
+
                     mapOf(
-                        "cellId" to cellIdentity.ci,
-                        "tac" to (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) cellIdentity.tac else null),
-                        "mcc" to cellIdentity.mccString,
-                        "mnc" to cellIdentity.mncString,
-                        "signalStrength" to cellSignalStrength.dbm,
+                        "cellId" to ci,
+                        "tac" to tac,
+                        "mcc" to mcc,
+                        "mnc" to mnc,
+                        "signalStrength" to cellInfo.cellSignalStrength.dbm,
                         "networkType" to "LTE",
-                        "pci" to (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) cellIdentity.pci else null)
+                        "pci" to pci
                     )
                 }
+
                 is CellInfoWcdma -> {
-                    val cellIdentity = cellInfo.cellIdentity
-                    val cellSignalStrength = cellInfo.cellSignalStrength
+                    val id = cellInfo.cellIdentity
+                    val cid = id.cid
+                    if (cid == Int.MAX_VALUE || cid <= 0) return null
+
+                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mccString else id.mcc?.toString()
+                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mncString else id.mnc?.toString()
+
                     mapOf(
-                        "cellId" to cellIdentity.cid,
-                        "lac" to cellIdentity.lac,
-                        "mcc" to cellIdentity.mccString,
-                        "mnc" to cellIdentity.mncString,
-                        "signalStrength" to try { 
-                            cellSignalStrength.dbm 
-                        } catch (e: Exception) { 
-                            null 
-                        },
+                        "cellId" to cid,
+                        "lac" to id.lac,
+                        "mcc" to mcc,
+                        "mnc" to mnc,
+                        "signalStrength" to cellInfo.cellSignalStrength.dbm,
                         "networkType" to "WCDMA",
-                        "psc" to cellIdentity.psc
+                        "psc" to id.psc
                     )
                 }
+
                 is CellInfoGsm -> {
-                    val cellIdentity = cellInfo.cellIdentity
-                    val cellSignalStrength = cellInfo.cellSignalStrength
+                    val id = cellInfo.cellIdentity
+                    val cid = id.cid
+                    if (cid == Int.MAX_VALUE || cid <= 0) return null
+
+                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mccString else id.mcc?.toString()
+                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mncString else id.mnc?.toString()
+
                     mapOf(
-                        "cellId" to cellIdentity.cid,
-                        "lac" to cellIdentity.lac,
-                        "mcc" to cellIdentity.mccString,
-                        "mnc" to cellIdentity.mncString,
-                        "signalStrength" to try { 
-                            cellSignalStrength.dbm 
-                        } catch (e: Exception) { 
-                            null 
-                        },
+                        "cellId" to cid,
+                        "lac" to id.lac,
+                        "mcc" to mcc,
+                        "mnc" to mnc,
+                        "signalStrength" to cellInfo.cellSignalStrength.dbm,
                         "networkType" to "GSM"
                     )
                 }
+
+                is CellInfoNr -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val id = cellInfo.cellIdentity as android.telephony.CellIdentityNr
+                        val nci = id.nci
+                        if (nci == Long.MAX_VALUE || nci <= 0) return null
+
+                        mapOf(
+                            "cellId" to nci,
+                            "tac" to id.tac,
+                            "mcc" to id.mccString,
+                            "mnc" to id.mncString,
+                            "signalStrength" to cellInfo.cellSignalStrength.dbm,
+                            "networkType" to "NR",
+                            "pci" to id.pci
+                        )
+                    } else null
+                }
+
                 else -> {
-                    Log.d(TAG, "Unsupported cell info type: ${cellInfo.javaClass.simpleName}")
+                    Log.d(TAG, "نوع دکل پشتیبانی نمی‌شه: ${cellInfo.javaClass.simpleName}")
                     null
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing cell info: ${e.message}", e)
+            Log.e(TAG, "خطا در خواندن اطلاعات دکل: ${e.message}")
             null
         }
     }
