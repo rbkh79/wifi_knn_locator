@@ -12,6 +12,8 @@ import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
+import android.telephony.SubscriptionInfo
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -70,8 +72,30 @@ class MainActivity : FlutterActivity() {
 
         Log.d(TAG, "مجوزها: FINE_LOCATION=$hasFineLocation, PHONE_STATE=$hasPhoneState")
 
+        // بررسی سیم‌کارت‌های فعال برای پشتیبانی از Dual-SIM
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+            val subscriptionManager = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+            val activeSubs = subscriptionManager.activeSubscriptionInfoList
+
+            if (activeSubs.isNullOrEmpty() || activeSubs.size == 1) {
+                // تک سیم‌کارت یا لیست خالی: از روش قبلی استفاده کن
+                Log.d(TAG, "تک سیم‌کارت یا لیست خالی، از TelephonyManager پیش‌فرض استفاده می‌کنیم")
+                fetchCellInfoForManager(telephonyManager, result)
+            } else {
+                // دو سیم‌کارت: برای هر سیم‌کارت جداگانه اسکن کن
+                Log.d(TAG, "دو سیم‌کارت شناسایی شد: ${activeSubs.size} سیم‌کارت فعال")
+                fetchCellInfoForDualSim(activeSubs, telephonyManager, result)
+            }
+        } else {
+            // Android قدیمی: از روش قبلی استفاده کن
+            fetchCellInfoForManager(telephonyManager, result)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun fetchCellInfoForManager(telephonyManager: TelephonyManager, result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ : requestCellInfoUpdate با timeout
+            // Android 11+ : requestCellInfoUpdate با timeout افزایش یافته به 5 ثانیه
             val handler = Handler(Looper.getMainLooper())
             var callbackCalled = false
 
@@ -116,8 +140,8 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 )
-                // timeout 3 ثانیه
-                handler.postDelayed(timeoutRunnable, 3000)
+                // timeout 5 ثانیه (افزایش یافته برای گوشی‌های شیائومی)
+                handler.postDelayed(timeoutRunnable, 5000)
             } catch (e: Exception) {
                 Log.e(TAG, "Exception در requestCellInfoUpdate: ${e.message}")
                 val fallback = try {
@@ -135,6 +159,94 @@ class MainActivity : FlutterActivity() {
                 emptyList()
             }
             result.success(processCellInfoList(list))
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun fetchCellInfoForDualSim(
+        activeSubs: List<SubscriptionInfo>,
+        baseTelephonyManager: TelephonyManager,
+        result: MethodChannel.Result
+    ) {
+        val allCells = mutableListOf<CellInfo>()
+        var pending = activeSubs.size
+        val handler = Handler(Looper.getMainLooper())
+        var callbackCalled = false
+
+        // Timeout کلی برای Dual-SIM
+        val timeoutRunnable = Runnable {
+            if (!callbackCalled) {
+                callbackCalled = true
+                Log.w(TAG, "Dual-SIM timeout رسید")
+                result.success(processCellInfoList(allCells))
+            }
+        }
+        handler.postDelayed(timeoutRunnable, 7000) // 7 ثانیه برای Dual-SIM
+
+        for (subInfo in activeSubs) {
+            try {
+                val tmForSub = baseTelephonyManager.createForSubscriptionId(subInfo.subscriptionId)
+                Log.d(TAG, "اسکن سیم‌کارت: subId=${subInfo.subscriptionId}, simSlot=${subInfo.simSlotIndex}")
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    tmForSub.requestCellInfoUpdate(
+                        mainExecutor,
+                        object : TelephonyManager.CellInfoCallback() {
+                            override fun onCellInfo(list: MutableList<CellInfo>) {
+                                if (!callbackCalled) {
+                                    allCells.addAll(list)
+                                    Log.d(TAG, "سیم‌کارت ${subInfo.subscriptionId}: ${list.size} دکل")
+                                    pending--
+                                    if (pending == 0) {
+                                        callbackCalled = true
+                                        handler.removeCallbacks(timeoutRunnable)
+                                        result.success(processCellInfoList(allCells))
+                                    }
+                                }
+                            }
+
+                            override fun onError(errorCode: Int, detail: Throwable?) {
+                                if (!callbackCalled) {
+                                    Log.e(TAG, "خطا در سیم‌کارت ${subInfo.subscriptionId}: $errorCode")
+                                    // Fallback به allCellInfo
+                                    try {
+                                        allCells.addAll(tmForSub.allCellInfo ?: emptyList())
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Fallback failed for sub ${subInfo.subscriptionId}")
+                                    }
+                                    pending--
+                                    if (pending == 0) {
+                                        callbackCalled = true
+                                        handler.removeCallbacks(timeoutRunnable)
+                                        result.success(processCellInfoList(allCells))
+                                    }
+                                }
+                            }
+                        }
+                    )
+                } else {
+                    // Android قدیمی: از allCellInfo استفاده کن
+                    try {
+                        allCells.addAll(tmForSub.allCellInfo ?: emptyList())
+                    } catch (e: Exception) {
+                        Log.e(TAG, "خطا در allCellInfo برای سیم‌کارت ${subInfo.subscriptionId}")
+                    }
+                    pending--
+                    if (pending == 0) {
+                        callbackCalled = true
+                        handler.removeCallbacks(timeoutRunnable)
+                        result.success(processCellInfoList(allCells))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception در اسکن سیم‌کارت ${subInfo.subscriptionId}: ${e.message}")
+                pending--
+                if (pending == 0) {
+                    callbackCalled = true
+                    handler.removeCallbacks(timeoutRunnable)
+                    result.success(processCellInfoList(allCells))
+                }
+            }
         }
     }
 

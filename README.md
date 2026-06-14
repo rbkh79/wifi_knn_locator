@@ -6,6 +6,7 @@ A Flutter mobile application for indoor/outdoor localization using Wi-Fi (RSSI +
 
 - ✅ Wi-Fi scanning (BSSID, RSSI, frequency, timestamp) – بدون استفاده از IMU
 - ✅ Cell Tower (BTS) scanning via native Android TelephonyManager (2G/3G/4G/5G support)
+- ✅ Dual-SIM support for devices like Poco X3 Pro
 - ✅ Hybrid localization: Wi-Fi + BTS fusion with automatic mode selection
 - ✅ Local fingerprint database + training mode for both Wi-Fi and BTS
 - ✅ Persistent per-user UUID stored on device (no backend needed)
@@ -77,6 +78,8 @@ If BTS (Cell Tower) data is not being detected:
 5. **Check Logs**: Run `adb logcat | grep BTS_Service` to see native logs
 6. **Android 13+**: Ensure `READ_BASIC_PHONE_STATE` permission is granted
 7. **MIUI Devices**: Some MIUI versions may have additional restrictions; check battery optimization settings
+8. **Dual-SIM Devices**: The app automatically scans all active SIM cards. If BTS is not detected, check which SIM is set as default in Android settings
+9. **Location Permission**: On MIUI, set Location permission to "Always allow" (not "While using app")
 
 ### Install Dependencies
 
