@@ -81,6 +81,12 @@ class FingerprintEntry {
   final List<WifiReading> accessPoints;
   final DateTime createdAt;
   final String? deviceId; // شناسه دستگاه که این اثرانگشت را ثبت کرده
+  
+  // فیلدهای اضافی برای مکان‌یابی داخلی
+  final String? building; // نام ساختمان
+  final int? floor; // طبقه
+  final double? x; // مختصات X در سیستم مختصات محلی
+  final double? y; // مختصات Y در سیستم مختصات محلی
 
   FingerprintEntry({
     this.id,
@@ -93,6 +99,10 @@ class FingerprintEntry {
     required this.accessPoints,
     required this.createdAt,
     this.deviceId,
+    this.building,
+    this.floor,
+    this.x,
+    this.y,
   });
 
   Map<String, dynamic> toMap() {
@@ -107,6 +117,10 @@ class FingerprintEntry {
       'access_points': accessPoints.map((ap) => ap.toMap()).toList(),
       'created_at': createdAt.toIso8601String(),
       'device_id': deviceId,
+      'building': building,
+      'floor': floor,
+      'x': x,
+      'y': y,
     };
   }
 
@@ -124,6 +138,10 @@ class FingerprintEntry {
           .toList(),
       createdAt: DateTime.parse(map['created_at'] as String),
       deviceId: map['device_id'] as String?,
+      building: map['building'] as String?,
+      floor: map['floor'] as int?,
+      x: map['x'] as double?,
+      y: map['y'] as double?,
     );
   }
 
