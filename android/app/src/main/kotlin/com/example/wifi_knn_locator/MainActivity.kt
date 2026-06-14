@@ -22,8 +22,6 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "wifi_knn_locator/cell_info"
     private val TAG = "BTS_Service"
-    
-    // Test commit for GitHub
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

@@ -11,6 +11,7 @@
     
     <!-- Permissions for cellular tower scanning (GPS-free) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PRECISE_PHONE_STATE" />
     
     <!-- Permissions for file storage and downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
