@@ -56,6 +56,28 @@ android/app/src/main/kotlin/com/example/wifi_knn_locator/
 - Dart SDK (>=3.0.0)
 - Android Studio / Xcode
 
+### Android Permissions
+
+The app requires the following permissions on Android:
+
+- **Location**: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` (required for BTS scanning)
+- **Phone**: `READ_PHONE_STATE`, `READ_PRECISE_PHONE_STATE`, `READ_BASIC_PHONE_STATE` (required for BTS on Android 13+)
+- **WiFi**: `ACCESS_WIFI_STATE`, `CHANGE_WIFI_STATE`, `NEARBY_WIFI_DEVICES` (for Android 13+)
+
+**Important**: On Android 13+, both Location and Phone permissions are required for BTS scanning. Location service must be enabled.
+
+### Troubleshooting BTS Issues
+
+If BTS (Cell Tower) data is not being detected:
+
+1. **Check Permissions**: Ensure both Location and Phone permissions are granted in app settings
+2. **Enable Location**: Location service must be enabled on the device (even for BTS-only scanning)
+3. **Check SIM Card**: Ensure a SIM card is inserted and mobile network is active
+4. **Disable Airplane Mode**: Airplane mode blocks all cellular communication
+5. **Check Logs**: Run `adb logcat | grep BTS_Service` to see native logs
+6. **Android 13+**: Ensure `READ_BASIC_PHONE_STATE` permission is granted
+7. **MIUI Devices**: Some MIUI versions may have additional restrictions; check battery optimization settings
+
 ### Install Dependencies
 
 ```bash

@@ -22,11 +22,11 @@ class CellScanner {
         return false;
       }
       
-      // READ_PHONE_STATE هم برای برخی اطلاعات اضافی مفید است
+      // READ_PHONE_STATE برای Android 13+ ضروری است
       final phoneStatus = await Permission.phone.request();
       if (!phoneStatus.isGranted) {
-        debugPrint('Phone permission denied (optional)');
-        // ادامه می‌دهیم چون location کافی است
+        debugPrint('Phone permission denied - required for BTS on Android 13+');
+        return false;
       }
     }
     return true;
@@ -35,9 +35,10 @@ class CellScanner {
   /// بررسی وضعیت مجوزها
   static Future<bool> checkPermissions() async {
     if (Platform.isAndroid) {
-      // در Android 12+، location برای BTS کافی است
+      // در Android 13+، هم location و هم phone نیاز است
       final locationStatus = await Permission.location.status;
-      return locationStatus.isGranted;
+      final phoneStatus = await Permission.phone.status;
+      return locationStatus.isGranted && phoneStatus.isGranted;
     }
     return false; // فقط Android پشتیبانی می‌شود
   }
