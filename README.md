@@ -4,11 +4,13 @@ A Flutter mobile application for indoor localization using Wi-Fi (RSSI + MAC) an
 
 ## Features
 
-- ✅ Wi-Fi–only scanning (BSSID, RSSI, frequency, timestamp) – بدون استفاده از IMU
-- ✅ Local fingerprint database + training mode
+- ✅ Wi-Fi scanning (BSSID, RSSI, frequency, timestamp) – بدون استفاده از IMU
+- ✅ Cell Tower (BTS) scanning via native Android TelephonyManager (2G/3G/4G/5G support)
+- ✅ Hybrid localization: Wi-Fi + BTS fusion with automatic mode selection
+- ✅ Local fingerprint database + training mode for both Wi-Fi and BTS
 - ✅ Persistent per-user UUID stored on device (no backend needed)
-- ✅ Automatic logging of every Wi-Fi scan & KNN estimate در SQLite
-- ✅ Indoor localization via KNN fingerprinting + confidence scoring
+- ✅ Automatic logging of every Wi-Fi/BTS scan & KNN estimate در SQLite
+- ✅ Indoor/outdoor localization via KNN fingerprinting + confidence scoring
 - ✅ Movement prediction (Markov chain) based on location history
 - ✅ Interactive map: add reference tags by tapping (data captured automatically)
 - ✅ Privacy: hashed identifiers, MAC masking, transparency panel
@@ -23,17 +25,27 @@ lib/
 ├── config.dart                 # Configurable parameters
 ├── data_model.dart             # Data models (scans, fingerprints, history, predictions)
 ├── wifi_scanner.dart           # Wi-Fi scanning module
+├── cell_scanner.dart           # Cell Tower (BTS) scanning module
+├── bts_service.dart            # BTS service for location estimation
 ├── local_database.dart         # SQLite database management
-├── knn_localization.dart       # KNN algorithm implementation
+├── knn_localization.dart       # KNN algorithm implementation (Hybrid: Wi-Fi + BTS)
 ├── main.dart                   # Main UI
 ├── services/
 │   ├── fingerprint_service.dart    # Training/fingerprint workflows
-│   ├── data_logger_service.dart    # Logging Wi-Fi scans & location history
+│   ├── data_logger_service.dart    # Logging Wi-Fi/BTS scans & location history
 │   ├── movement_prediction_service.dart # Markov predictor for next zone
 │   ├── location_service.dart
 │   └── settings_service.dart
 └── utils/
-    └── privacy_utils.dart      # Privacy utilities (MAC hashing)
+    ├── privacy_utils.dart      # Privacy utilities (MAC hashing)
+    └── rssi_filter.dart        # RSSI filtering and noise reduction
+```
+
+### Android Native Layer
+
+```
+android/app/src/main/kotlin/com/example/wifi_knn_locator/
+└── MainActivity.kt             # Native BTS implementation via TelephonyManager
 ```
 
 ## Installation
@@ -106,23 +118,50 @@ flutter build appbundle --release
 
 تمامی جدول‌ها در `lib/local_database.dart` تعریف شده‌اند و با `sqflite` مدیریت می‌شوند.
 
-## KNN Algorithm (Wi-Fi only)
+## KNN Algorithm (Hybrid: Wi-Fi + BTS)
 
-The algorithm uses Euclidean distance on RSSI vectors:
-
-```
-distance = √(Σ(RSSI_observed - RSSI_fingerprint)²)
-```
-
-Confidence calculation:
+The algorithm uses weighted Euclidean distance on RSSI vectors:
 
 ```
-confidence = 1 / (1 + averageDistance / 100)
+distance = √(Σ(w_i × (RSSI_observed - RSSI_fingerprint)²))
 ```
+
+Where `w_i` is the weight based on signal strength (stronger signals get higher weight).
+
+### Hybrid Mode Selection
+
+The system automatically selects the best localization mode:
+- **Wi-Fi Priority**: If >= 3 APs with RSSI > -80 dBm are detected
+- **Hybrid Mode**: Combines Wi-Fi (60%) and BTS (40%) when both are available
+- **BTS Only**: When Wi-Fi is weak or unavailable
+- **Wi-Fi Only**: When BTS data is unavailable
+
+### Confidence Calculation
+
+Improved confidence scoring based on distance distribution:
+
+```
+confidence = 1 - (minDistance / maxExpectedDistance)
+```
+
+Where `maxExpectedDistance` is calibrated based on historical data.
+
+### RSSI Filtering
+
+- **Moving Average**: Reduces noise by averaging multiple scans
+- **Median Filter**: Robust against outliers
+- **Temporary AP Removal**: Filters APs that appear in < 30% of scans
+- **Hotspot Detection**: Removes mobile hotspots (SSID containing "Android", "Hotspot")
+
+### Frequency-Based Weighting
+
+2.4GHz and 5GHz bands receive different weights:
+- 5GHz: Higher weight (more stable, less interference)
+- 2.4GHz: Lower weight (more interference, variable)
 
 ### Fingerprint source
 
-اثر انگشت‌ها از فایل JSON/CSV (`assets/wifi_fingerprints.csv`) یا نقاطی که کاربر روی نقشه ذخیره می‌کند خوانده می‌شوند. الگوریتم فقط از Wi-Fi RSSI و MAC استفاده می‌کند؛ هیچ سنسور حرکتی/IMU درگیر نیست.
+اثر انگشت‌ها از فایل JSON/CSV (`assets/wifi_fingerprints.csv`) یا نقاطی که کاربر روی نقشه ذخیره می‌کند خوانده می‌شوند. الگوریتم از Wi-Fi RSSI/MAC و BTS Cell ID/TAC استفاده می‌کند؛ هیچ سنسور حرکتی/IMU درگیر نیست.
 
 ## Movement Prediction (Markov)
 

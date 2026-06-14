@@ -47,6 +47,23 @@ class RssiFilter {
     return filtered;
   }
 
+  /// حذف hotspotهای موبایل (Android Hotspot, Portable Hotspot, etc.)
+  static List<WifiReading> removeMobileHotspots(List<WifiReading> readings) {
+    return readings.where((reading) {
+      final ssid = reading.ssid?.toLowerCase() ?? '';
+      // فیلتر کردن hotspotهای موبایل
+      if (ssid.contains('android') || 
+          ssid.contains('hotspot') || 
+          ssid.contains('portable') ||
+          ssid.contains('iphone') ||
+          ssid.contains('samsung') ||
+          ssid.contains('xiaomi')) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
   /// حذف APهای موقت (که در درصد کمی از اسکن‌ها ظاهر شده‌اند)
   static List<WifiReading> removeTemporaryAps(
     List<List<WifiReading>> scanHistory,
@@ -132,6 +149,36 @@ class RssiFilter {
     
     final variance = calculateRssiVariance(rssiValues);
     return variance <= maxVariance;
+  }
+
+  /// Outlier Detection با Z-score
+  /// مقادیر با Z-score > threshold را حذف می‌کند
+  static List<int> removeOutliersZScore(List<int> values, {double threshold = 2.0}) {
+    if (values.length < 3) return values;
+
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    final stdDev = math.sqrt(values.map((v) => math.pow(v - mean, 2)).reduce((a, b) => a + b) / values.length);
+
+    if (stdDev == 0) return values;
+
+    return values.where((v) {
+      final zScore = (v - mean) / stdDev;
+      return zScore.abs() <= threshold;
+    }).toList();
+  }
+
+  /// محاسبه وزن بر اساس فرکانس
+  /// 5GHz وزن بیشتری دارد چون پایدارتر است
+  static double calculateFrequencyWeight(int? frequency) {
+    if (frequency == null) return 1.0; // فرکانس نامشخص = وزن پیش‌فرض
+    
+    if (frequency >= 5000) {
+      return 1.3; // 5GHz: وزن بیشتر
+    } else if (frequency >= 2400 && frequency < 2500) {
+      return 1.0; // 2.4GHz: وزن پیش‌فرض
+    }
+    
+    return 1.0; // فرکانسهای دیگر
   }
 }
 

@@ -361,18 +361,18 @@ class KnnLocalization {
   /// 
   /// از فاصله اقلیدسی وزن‌دار استفاده می‌کند:
   /// - برای هر BSSID مشترک: (RSSI1 - RSSI2)² * weight
-  /// - وزن بر اساس قدرت RSSI محاسبه می‌شود
+  /// - وزن بر اساس قدرت RSSI و فرکانس محاسبه می‌شود
   /// - برای BSSID‌های غیرمشترک: مقدار پیش‌فرض (-100) استفاده می‌شود
   double _calculateDistance(List<WifiReading> observed, List<WifiReading> fingerprint) {
     // ساخت Map برای دسترسی سریع‌تر
-    final observedMap = <String, int>{};
+    final observedMap = <String, WifiReading>{};
     for (final ap in observed) {
-      observedMap[ap.bssid] = ap.rssi;
+      observedMap[ap.bssid] = ap;
     }
 
-    final fingerprintMap = <String, int>{};
+    final fingerprintMap = <String, WifiReading>{};
     for (final ap in fingerprint) {
-      fingerprintMap[ap.bssid] = ap.rssi;
+      fingerprintMap[ap.bssid] = ap;
     }
 
     // جمع‌آوری تمام BSSID‌ها (اتحاد دو مجموعه)
@@ -383,20 +383,32 @@ class KnnLocalization {
     const defaultRssi = -100; // مقدار پیش‌فرض برای APهای مشاهده نشده
 
     for (final bssid in allBssids) {
-      final obsRssi = observedMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
-      final fpRssi = fingerprintMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
+      final obsAp = observedMap[bssid];
+      final fpAp = fingerprintMap[bssid];
+      
+      final obsRssi = obsAp?.rssi.toDouble() ?? defaultRssi.toDouble();
+      final fpRssi = fpAp?.rssi.toDouble() ?? defaultRssi.toDouble();
       
       final diff = obsRssi - fpRssi;
       
-      // وزن‌دهی RSSI (اگر فعال باشد)
+      // محاسبه وزن ترکیبی (RSSI + Frequency)
+      double weight = 1.0;
+      
       if (AppConfig.useRssiWeighting) {
-        // استفاده از میانگین RSSI برای محاسبه وزن
+        // وزن بر اساس RSSI
         final avgRssi = ((obsRssi + fpRssi) / 2).round();
-        final weight = RssiFilter.calculateRssiWeight(avgRssi);
-        distance += diff * diff * weight;
-      } else {
-        distance += diff * diff;
+        final rssiWeight = RssiFilter.calculateRssiWeight(avgRssi);
+        
+        // وزن بر اساس فرکانس
+        final obsFreqWeight = RssiFilter.calculateFrequencyWeight(obsAp?.frequency);
+        final fpFreqWeight = RssiFilter.calculateFrequencyWeight(fpAp?.frequency);
+        final freqWeight = (obsFreqWeight + fpFreqWeight) / 2;
+        
+        // ترکیب وزن‌ها
+        weight = rssiWeight * freqWeight;
       }
+      
+      distance += diff * diff * weight;
     }
 
     // ریشه دوم فاصله اقلیدسی
@@ -406,16 +418,22 @@ class KnnLocalization {
   /// محاسبه ضریب اطمینان
   /// 
   /// اعتماد بر اساس:
-  /// - میانگین فاصله تا همسایه‌ها (هرچه کمتر، اعتماد بیشتر)
-  /// - یکنواختی فاصله‌ها (هرچه یکنواخت‌تر، اعتماد بیشتر)
+  /// - فاصله تا نزدیک‌ترین همسایه (minDistance)
+  /// - یکنواختی فاصله‌ها (انحراف معیار)
+  /// - نسبت minDistance به maxExpectedDistance
   double _calculateConfidence(double avgDistance, List<double> distances) {
     if (distances.isEmpty) return 0.0;
 
-    // نرمال‌سازی بر اساس فاصله
-    // فاصله 0 = اعتماد 1.0
-    // فاصله بزرگ = اعتماد نزدیک به 0
-    final normalizedDistance = 1.0 / (1.0 + avgDistance / 100.0); // تقسیم بر 100 برای نرمال‌سازی
-
+    final minDistance = distances.reduce(math.min);
+    final maxDistance = distances.reduce(math.max);
+    
+    // maxExpectedDistance بر اساس داده‌های تاریخی کالیبره می‌شود
+    // برای حال حاضر از یک مقدار ثابت استفاده می‌کنیم
+    const maxExpectedDistance = 200.0;
+    
+    // فرمول بهبود یافته: confidence = 1 - (minDistance / maxExpectedDistance)
+    final distanceConfidence = (1.0 - (minDistance / maxExpectedDistance)).clamp(0.0, 1.0);
+    
     // محاسبه انحراف معیار برای بررسی یکنواختی
     if (distances.length > 1) {
       final mean = avgDistance;
@@ -425,11 +443,11 @@ class KnnLocalization {
       // هرچه انحراف معیار کمتر باشد، اعتماد بیشتر است
       final consistency = 1.0 / (1.0 + stdDev / 50.0);
       
-      // ترکیب نرمال‌سازی فاصله و یکنواختی
-      return (normalizedDistance * 0.7 + consistency * 0.3).clamp(0.0, 1.0);
+      // ترکیب distanceConfidence و consistency
+      return (distanceConfidence * 0.7 + consistency * 0.3).clamp(0.0, 1.0);
     }
 
-    return normalizedDistance.clamp(0.0, 1.0);
+    return distanceConfidence.clamp(0.0, 1.0);
   }
 
   /// تعیین لیبل ناحیه بر اساس اکثریت همسایه‌ها
@@ -466,14 +484,14 @@ class KnnLocalization {
   /// محاسبه فاصله ساده (بدون ریشه) - برای بهینه‌سازی
   /// در صورت نیاز می‌توان از این استفاده کرد
   double _calculateDistanceSquared(List<WifiReading> observed, List<WifiReading> fingerprint) {
-    final observedMap = <String, int>{};
+    final observedMap = <String, WifiReading>{};
     for (final ap in observed) {
-      observedMap[ap.bssid] = ap.rssi;
+      observedMap[ap.bssid] = ap;
     }
 
-    final fingerprintMap = <String, int>{};
+    final fingerprintMap = <String, WifiReading>{};
     for (final ap in fingerprint) {
-      fingerprintMap[ap.bssid] = ap.rssi;
+      fingerprintMap[ap.bssid] = ap;
     }
 
     final allBssids = <String>{...observedMap.keys, ...fingerprintMap.keys};
@@ -481,11 +499,29 @@ class KnnLocalization {
     const defaultRssi = -100;
 
     for (final bssid in allBssids) {
-      final obsRssi = observedMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
-      final fpRssi = fingerprintMap[bssid]?.toDouble() ?? defaultRssi.toDouble();
+      final obsAp = observedMap[bssid];
+      final fpAp = fingerprintMap[bssid];
+      
+      final obsRssi = obsAp?.rssi.toDouble() ?? defaultRssi.toDouble();
+      final fpRssi = fpAp?.rssi.toDouble() ?? defaultRssi.toDouble();
       
       final diff = obsRssi - fpRssi;
-      distanceSquared += diff * diff;
+      
+      // محاسبه وزن ترکیبی (RSSI + Frequency)
+      double weight = 1.0;
+      
+      if (AppConfig.useRssiWeighting) {
+        final avgRssi = ((obsRssi + fpRssi) / 2).round();
+        final rssiWeight = RssiFilter.calculateRssiWeight(avgRssi);
+        
+        final obsFreqWeight = RssiFilter.calculateFrequencyWeight(obsAp?.frequency);
+        final fpFreqWeight = RssiFilter.calculateFrequencyWeight(fpAp?.frequency);
+        final freqWeight = (obsFreqWeight + fpFreqWeight) / 2;
+        
+        weight = rssiWeight * freqWeight;
+      }
+      
+      distanceSquared += diff * diff * weight;
     }
 
     return distanceSquared;
