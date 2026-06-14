@@ -1,6 +1,6 @@
-# WiFi KNN Locator
+# WiFi + BTS KNN Locator
 
-A Flutter mobile application for indoor localization using Wi-Fi (RSSI + MAC) and K-Nearest Neighbors (KNN) algorithm.
+A Flutter mobile application for indoor/outdoor localization using Wi-Fi (RSSI + MAC), Cell Tower (BTS), and K-Nearest Neighbors (KNN) algorithm.
 
 ## Features
 
@@ -120,13 +120,15 @@ flutter build appbundle --release
 
 ## KNN Algorithm (Hybrid: Wi-Fi + BTS)
 
-The algorithm uses weighted Euclidean distance on RSSI vectors:
+The algorithm uses **Weighted Euclidean Distance** on RSSI vectors:
 
 ```
 distance = √(Σ(w_i × (RSSI_observed - RSSI_fingerprint)²))
 ```
 
-Where `w_i` is the weight based on signal strength (stronger signals get higher weight).
+Where `w_i` is the combined weight based on:
+- **Signal Strength**: Stronger RSSI gets higher weight
+- **Frequency**: 5GHz gets 1.3x weight, 2.4GHz gets 1.0x weight
 
 ### Hybrid Mode Selection
 
@@ -150,8 +152,10 @@ Where `maxExpectedDistance` is calibrated based on historical data.
 
 - **Moving Average**: Reduces noise by averaging multiple scans
 - **Median Filter**: Robust against outliers
+- **Kalman Filter**: Advanced filtering for RSSI time series
 - **Temporary AP Removal**: Filters APs that appear in < 30% of scans
 - **Hotspot Detection**: Removes mobile hotspots (SSID containing "Android", "Hotspot")
+- **Outlier Detection**: Z-score based outlier removal
 
 ### Frequency-Based Weighting
 
