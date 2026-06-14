@@ -181,48 +181,6 @@ class RssiFilter {
     return 1.0; // فرکانسهای دیگر
   }
 
-  /// Kalman Filter ساده برای فیلتر کردن RSSI
-  /// 
-  /// این کلاس یک Kalman Filter ساده را پیاده‌سازی می‌کند که برای فیلتر کردن نویز RSSI استفاده می‌شود
-  class KalmanFilter {
-    double _processNoise; // نویز فرآیند (Q)
-    double _measurementNoise; // نویز اندازه‌گیری (R)
-    double _estimatedValue; // مقدار تخمینی
-    double _errorCovariance; // کوواریانس خطا
-    
-    KalmanFilter({
-      double processNoise = 0.01,
-      double measurementNoise = 0.1,
-      double initialValue = -50.0,
-    }) : _processNoise = processNoise,
-         _measurementNoise = measurementNoise,
-         _estimatedValue = initialValue,
-         _errorCovariance = 1.0;
-
-    /// فیلتر کردن یک مقدار جدید
-    double filter(double measurement) {
-      // Prediction step
-      final predictedValue = _estimatedValue;
-      final predictedCovariance = _errorCovariance + _processNoise;
-
-      // Update step
-      final kalmanGain = predictedCovariance / (predictedCovariance + _measurementNoise);
-      _estimatedValue = predictedValue + kalmanGain * (measurement - predictedValue);
-      _errorCovariance = (1 - kalmanGain) * predictedCovariance;
-
-      return _estimatedValue;
-    }
-
-    /// دریافت مقدار تخمینی فعلی
-    double get estimatedValue => _estimatedValue;
-
-    /// بازنشانی فیلتر با مقدار جدید
-    void reset(double initialValue) {
-      _estimatedValue = initialValue;
-      _errorCovariance = 1.0;
-    }
-  }
-
   /// اعمال Kalman Filter روی لیستی از مقادیر RSSI
   static List<int> applyKalmanFilter(List<int> rssiValues, {
     double processNoise = 0.01,
@@ -243,6 +201,48 @@ class RssiFilter {
     }
 
     return filtered;
+  }
+}
+
+/// Kalman Filter ساده برای فیلتر کردن RSSI
+/// 
+/// این کلاس یک Kalman Filter ساده را پیاده‌سازی می‌کند که برای فیلتر کردن نویز RSSI استفاده می‌شود
+class KalmanFilter {
+  double _processNoise; // نویز فرآیند (Q)
+  double _measurementNoise; // نویز اندازه‌گیری (R)
+  double _estimatedValue; // مقدار تخمینی
+  double _errorCovariance; // کوواریانس خطا
+  
+  KalmanFilter({
+    double processNoise = 0.01,
+    double measurementNoise = 0.1,
+    double initialValue = -50.0,
+  }) : _processNoise = processNoise,
+       _measurementNoise = measurementNoise,
+       _estimatedValue = initialValue,
+       _errorCovariance = 1.0;
+
+  /// فیلتر کردن یک مقدار جدید
+  double filter(double measurement) {
+    // Prediction step
+    final predictedValue = _estimatedValue;
+    final predictedCovariance = _errorCovariance + _processNoise;
+
+    // Update step
+    final kalmanGain = predictedCovariance / (predictedCovariance + _measurementNoise);
+    _estimatedValue = predictedValue + kalmanGain * (measurement - predictedValue);
+    _errorCovariance = (1 - kalmanGain) * predictedCovariance;
+
+    return _estimatedValue;
+  }
+
+  /// دریافت مقدار تخمینی فعلی
+  double get estimatedValue => _estimatedValue;
+
+  /// بازنشانی فیلتر با مقدار جدید
+  void reset(double initialValue) {
+    _estimatedValue = initialValue;
+    _errorCovariance = 1.0;
   }
 }
 
