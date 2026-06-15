@@ -149,6 +149,23 @@ class MainActivity : FlutterActivity() {
                 } catch (ex: Exception) {
                     emptyList()
                 }
+
+                // اگر fallback خالی بود، تلاش برای بازیابی از cellLocation (پشتیبانی برای دستگاه‌هایی که allCellInfo خالی برمی‌گردونن)
+                if (fallback.isEmpty()) {
+                    try {
+                        val cellLoc = telephonyManager.cellLocation
+                        if (cellLoc != null) {
+                            val cellMap = cellLocationToMap(cellLoc)
+                            if (cellMap != null) {
+                                result.success(mapOf("serving_cell" to cellMap, "neighboring_cells" to emptyList<Any>()))
+                                return
+                            }
+                        }
+                    } catch (e2: Exception) {
+                        Log.w(TAG, "cellLocation fallback failed: ${e2.message}")
+                    }
+                }
+
                 result.success(processCellInfoList(fallback))
             }
         } else {
@@ -214,6 +231,29 @@ class MainActivity : FlutterActivity() {
                                     } catch (e: Exception) {
                                         Log.e(TAG, "Fallback failed for sub ${subInfo.subscriptionId}")
                                     }
+
+                                    // اگر هنوز خالیه، تلاش برای cellLocation به عنوان fallback
+                                    if (allCells.isEmpty()) {
+                                        try {
+                                            val cellLoc = tmForSub.cellLocation
+                                            if (cellLoc != null) {
+                                                val cellMap = cellLocationToMap(cellLoc)
+                                                if (cellMap != null) {
+                                                    // وقتی pending به 0 رسید، مستقیم پاسخ حاوی cellMap می‌فرستیم
+                                                    pending--
+                                                    if (pending == 0) {
+                                                        callbackCalled = true
+                                                        handler.removeCallbacks(timeoutRunnable)
+                                                        result.success(mapOf("serving_cell" to cellMap, "neighboring_cells" to emptyList<Any>()))
+                                                        return
+                                                    }
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "cellLocation fallback for sub ${subInfo.subscriptionId} failed: ${e.message}")
+                                        }
+                                    }
+
                                     pending--
                                     if (pending == 0) {
                                         callbackCalled = true
@@ -290,6 +330,36 @@ class MainActivity : FlutterActivity() {
             "serving_cell" to servingCell,
             "neighboring_cells" to neighboringCells
         )
+    }
+
+    // Fallback helper: در صورتی که allCellInfo خالی باشد از cellLocation استفاده می‌کنیم (GSM/CDMA)
+    private fun cellLocationToMap(cellLocation: android.telephony.CellLocation): Map<String, Any?>? {
+        return try {
+            when (cellLocation) {
+                is android.telephony.gsm.GsmCellLocation -> {
+                    val cid = cellLocation.cid.takeIf { it != -1 }
+                    val lac = cellLocation.lac.takeIf { it != -1 }
+                    mapOf(
+                        "cellId" to cid,
+                        "lac" to lac,
+                        "networkType" to "GSM",
+                        "signalStrength" to null
+                    )
+                }
+                is android.telephony.cdma.CdmaCellLocation -> {
+                    val baseId = cellLocation.baseStationId.takeIf { it != -1 }
+                    mapOf(
+                        "cellId" to baseId,
+                        "networkType" to "CDMA",
+                        "signalStrength" to null
+                    )
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cellLocationToMap failed: ${e.message}")
+            null
+        }
     }
 
     @Suppress("DEPRECATION")
