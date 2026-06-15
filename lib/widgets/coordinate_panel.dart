@@ -202,7 +202,7 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                               ),
                             )
                           : const Icon(Icons.refresh),
-                      label: const Text('اسکن'),
+                      label: const Text('اسکن BTS و WiFi'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size.fromHeight(44),
                       ),
@@ -290,7 +290,7 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
               ElevatedButton.icon(
                 onPressed: widget.isLoading ? null : widget.onScan,
                 icon: const Icon(Icons.refresh),
-                label: const Text('شروع اسکن'),
+                label: const Text('شروع اسکن BTS و WiFi'),
               ),
             ],
           ),

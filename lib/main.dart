@@ -76,7 +76,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WiFi KNN Locator',
+      title: 'WiFi + BTS KNN Locator',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,

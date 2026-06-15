@@ -24,26 +24,18 @@ class BTSService {
   }
 
   /// تخمین اولیه موقعیت: اگر بیش از ۲ دکل وجود داشته باشد، از مثلث‌سازی استفاده می‌کنیم
+  /// 
+  /// توجه: این متد نیاز به مختصات واقعی دکل‌ها دارد. در حال حاضر null برمی‌گرداند
+  /// چون مختصات دکل‌ها در دیتابیس ذخیره نشده‌اند.
+  /// برای استفاده واقعی، باید از سرویس‌هایی مثل Mozilla Location Service یا OpenCellID استفاده کنید.
   static LatLng? estimatePosition(CellScanResult scan) {
-    final towers = <CellTowerInfo>[];
-    if (scan.servingCell != null) towers.add(scan.servingCell!);
-    towers.addAll(scan.neighboringCells);
-
-    if (towers.length < 2) return null;
-
-    // ساده‌شده: وزن‌دار centroid براساس قدرت سیگنال
-    double sumLat = 0, sumLon = 0, sumW = 0;
-    for (final t in towers) {
-      final w = 1 / ((t.signalStrength ?? -120).abs() + 1);
-      // برای نمونه‌سازی فقط فرض می‌کنیم مختصاتی برای دکل‌ها داریم
-      // در عمل باید با سرویس خارجی موقعیت دکل را تعیین کرد.
-      final lat = 0.0;
-      final lon = 0.0;
-      sumLat += lat * w;
-      sumLon += lon * w;
-      sumW += w;
-    }
-    if (sumW == 0) return null;
-    return LatLng(sumLat / sumW, sumLon / sumW);
+    // TODO: پیاده‌سازی واقعی با استفاده از سرویس خارجی برای مختصات دکل‌ها
+    // برای مثال:
+    // 1. Cell ID را به سرویس OpenCellID بفرستید
+    // 2. مختصات دکل را دریافت کنید
+    // 3. از مثلث‌سازی یا weighted centroid استفاده کنید
+    
+    // فعلاً null برمی‌گردانیم چون مختصات دکل‌ها نداریم
+    return null;
   }
 }

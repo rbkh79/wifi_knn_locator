@@ -28,7 +28,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
-        android:label="WiFi KNN Locator"
+        android:label="WiFi + BTS KNN Locator"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
 

@@ -191,7 +191,7 @@ class _SinglePageLocalizationScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('خطا در اسکن. لطفاً دوباره تلاش کنید.'),
+            content: const Text('خطا در اسکن BTS و WiFi. لطفاً دوباره تلاش کنید.'),
             backgroundColor: Colors.red.shade700,
             duration: const Duration(seconds: 3),
           ),

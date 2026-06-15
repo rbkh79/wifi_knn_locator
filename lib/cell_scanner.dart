@@ -149,6 +149,7 @@ class CellScanner {
         networkType: map['networkType'] as String?,
         psc: _parseInt(map['psc']),
         pci: _parseInt(map['pci']),
+        earfcn: _parseInt(map['earfcn']),
       );
     } catch (e) {
       debugPrint('Error parsing cell info: $e, map: $map');

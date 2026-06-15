@@ -339,6 +339,7 @@ class CellTowerInfo {
   final String? networkType; // نوع شبکه (GSM, WCDMA, LTE, NR)
   final int? psc; // Primary Scrambling Code (3G)
   final int? pci; // Physical Cell ID (4G/5G)
+  final int? earfcn; // E-UTRA Absolute Radio Frequency Channel Number (4G)
 
   CellTowerInfo({
     this.cellId,
@@ -350,6 +351,7 @@ class CellTowerInfo {
     this.networkType,
     this.psc,
     this.pci,
+    this.earfcn,
   });
 
   Map<String, dynamic> toMap() {
@@ -363,6 +365,7 @@ class CellTowerInfo {
       'network_type': networkType,
       'psc': psc,
       'pci': pci,
+      'earfcn': earfcn,
     };
   }
 
@@ -377,6 +380,7 @@ class CellTowerInfo {
       networkType: map['network_type'] as String?,
       psc: map['psc'] as int?,
       pci: map['pci'] as int?,
+      earfcn: map['earfcn'] as int?,
     );
   }
 

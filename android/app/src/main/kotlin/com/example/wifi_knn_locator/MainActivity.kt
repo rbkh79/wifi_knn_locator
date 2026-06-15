@@ -39,7 +39,13 @@ class MainActivity : FlutterActivity() {
 
     @SuppressLint("MissingPermission")
     private fun getCellInfoAsync(result: MethodChannel.Result) {
+        Log.d(TAG, "=== شروع اسکن BTS ===")
+        Log.d(TAG, "Android version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+        Log.d(TAG, "Device manufacturer: ${Build.MANUFACTURER}")
+        Log.d(TAG, "Device model: ${Build.MODEL}")
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            Log.e(TAG, "Android version too old: API ${Build.VERSION.SDK_INT}")
             result.error("UNSUPPORTED", "Android version too old", null)
             return
         }
@@ -50,41 +56,71 @@ class MainActivity : FlutterActivity() {
             this, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
+        val hasCoarseLocation = ActivityCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
         // Android 13+ نیاز به READ_BASIC_PHONE_STATE داره، نه READ_PHONE_STATE
         val hasPhoneState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.checkSelfPermission(
+            val hasBasic = ActivityCompat.checkSelfPermission(
                 this, Manifest.permission.READ_BASIC_PHONE_STATE
-            ) == PackageManager.PERMISSION_GRANTED ||
-            ActivityCompat.checkSelfPermission(
+            ) == PackageManager.PERMISSION_GRANTED
+            val hasNormal = ActivityCompat.checkSelfPermission(
                 this, Manifest.permission.READ_PHONE_STATE
             ) == PackageManager.PERMISSION_GRANTED
+            val hasPrecise = ActivityCompat.checkSelfPermission(
+                this, Manifest.permission.READ_PRECISE_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+            Log.d(TAG, "Android 13+ Permissions: BASIC=$hasBasic, PHONE=$hasNormal, PRECISE=$hasPrecise")
+            hasBasic || hasNormal || hasPrecise
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            ActivityCompat.checkSelfPermission(
+            val hasNormal = ActivityCompat.checkSelfPermission(
                 this, Manifest.permission.READ_PHONE_STATE
             ) == PackageManager.PERMISSION_GRANTED
-        } else true
+            val hasPrecise = ActivityCompat.checkSelfPermission(
+                this, Manifest.permission.READ_PRECISE_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+            Log.d(TAG, "Android 6-12 Permissions: PHONE=$hasNormal, PRECISE=$hasPrecise")
+            hasNormal || hasPrecise
+        } else {
+            Log.d(TAG, "Android < 6: Phone permissions not required")
+            true
+        }
 
-        if (!hasFineLocation) {
-            Log.w(TAG, "مجوز ACCESS_FINE_LOCATION نداریم")
-            result.error("PERMISSION_DENIED", "مجوز ACCESS_FINE_LOCATION داده نشده", null)
+        Log.d(TAG, "Final Permissions: FINE_LOCATION=$hasFineLocation, COARSE_LOCATION=$hasCoarseLocation, PHONE_STATE=$hasPhoneState")
+
+        if (!hasFineLocation && !hasCoarseLocation) {
+            Log.e(TAG, "هیچ مجوز Location نداریم")
+            result.error("PERMISSION_DENIED", "مجوز Location داده نشده", null)
             return
         }
 
-        Log.d(TAG, "مجوزها: FINE_LOCATION=$hasFineLocation, PHONE_STATE=$hasPhoneState")
-
         // بررسی سیم‌کارت‌های فعال برای پشتیبانی از Dual-SIM
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
-            val subscriptionManager = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-            val activeSubs = subscriptionManager.activeSubscriptionInfoList
+            try {
+                val subscriptionManager = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+                val activeSubs = subscriptionManager.activeSubscriptionInfoList
 
-            if (activeSubs.isNullOrEmpty() || activeSubs.size == 1) {
-                // تک سیم‌کارت یا لیست خالی: از روش قبلی استفاده کن
-                Log.d(TAG, "تک سیم‌کارت یا لیست خالی، از TelephonyManager پیش‌فرض استفاده می‌کنیم")
+                if (activeSubs.isNullOrEmpty()) {
+                    Log.w(TAG, "لیست سیم‌کارت‌ها خالی است")
+                    // تلاش با TelephonyManager پیش‌فرض
+                    fetchCellInfoForManager(telephonyManager, result)
+                } else {
+                    Log.d(TAG, "تعداد سیم‌کارت‌های فعال: ${activeSubs.size}")
+                    for (sub in activeSubs) {
+                        Log.d(TAG, "  - SIM ${sub.simSlotIndex}: subId=${sub.subscriptionId}, carrier=${sub.carrierName}")
+                    }
+
+                    if (activeSubs.size == 1) {
+                        fetchCellInfoForManager(telephonyManager, result)
+                    } else {
+                        fetchCellInfoForDualSim(activeSubs, telephonyManager, result)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "خطا در SubscriptionManager: ${e.message}")
+                // Fallback به روش ساده
                 fetchCellInfoForManager(telephonyManager, result)
-            } else {
-                // دو سیم‌کارت: برای هر سیم‌کارت جداگانه اسکن کن
-                Log.d(TAG, "دو سیم‌کارت شناسایی شد: ${activeSubs.size} سیم‌کارت فعال")
-                fetchCellInfoForDualSim(activeSubs, telephonyManager, result)
             }
         } else {
             // Android قدیمی: از روش قبلی استفاده کن
@@ -94,18 +130,37 @@ class MainActivity : FlutterActivity() {
 
     @SuppressLint("MissingPermission")
     private fun fetchCellInfoForManager(telephonyManager: TelephonyManager, result: MethodChannel.Result) {
+        Log.d(TAG, "fetchCellInfoForManager: شروع اسکن")
+
+        // ابتدا تلاش با allCellInfo (سریع‌تر، cache شده)
+        try {
+            val allCellInfo = telephonyManager.allCellInfo
+            if (allCellInfo != null && allCellInfo.isNotEmpty()) {
+                Log.d(TAG, "allCellInfo موفق: ${allCellInfo.size} دکل")
+                result.success(processCellInfoList(allCellInfo))
+                return
+            } else {
+                Log.w(TAG, "allCellInfo خالی یا null است، تلاش با requestCellInfoUpdate")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "خطا در allCellInfo: ${e.message}")
+        }
+
+        // Fallback به requestCellInfoUpdate برای Android 11+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ : requestCellInfoUpdate با timeout افزایش یافته به 5 ثانیه
+            Log.d(TAG, "تلاش با requestCellInfoUpdate (Android 11+)")
             val handler = Handler(Looper.getMainLooper())
             var callbackCalled = false
 
             val timeoutRunnable = Runnable {
                 if (!callbackCalled) {
                     callbackCalled = true
-                    Log.w(TAG, "timeout رسید، از allCellInfo استفاده می‌کنیم")
+                    Log.w(TAG, "requestCellInfoUpdate timeout رسید")
+                    // آخرین تلاش: دوباره allCellInfo
                     val fallback = try {
                         telephonyManager.allCellInfo ?: emptyList()
                     } catch (e: Exception) {
+                        Log.e(TAG, "Fallback allCellInfo خطا: ${e.message}")
                         emptyList()
                     }
                     result.success(processCellInfoList(fallback))
@@ -129,7 +184,8 @@ class MainActivity : FlutterActivity() {
                             if (!callbackCalled) {
                                 callbackCalled = true
                                 handler.removeCallbacks(timeoutRunnable)
-                                Log.e(TAG, "خطا در CellInfoUpdate: $errorCode - $detail")
+                                Log.e(TAG, "requestCellInfoUpdate خطا: code=$errorCode, detail=$detail")
+                                // Fallback به allCellInfo
                                 val fallback = try {
                                     telephonyManager.allCellInfo ?: emptyList()
                                 } catch (e: Exception) {
@@ -140,7 +196,7 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 )
-                // timeout 5 ثانیه (افزایش یافته برای گوشی‌های شیائومی)
+                // timeout 5 ثانیه
                 handler.postDelayed(timeoutRunnable, 5000)
             } catch (e: Exception) {
                 Log.e(TAG, "Exception در requestCellInfoUpdate: ${e.message}")
@@ -150,7 +206,7 @@ class MainActivity : FlutterActivity() {
                     emptyList()
                 }
 
-                // اگر fallback خالی بود، تلاش برای بازیابی از cellLocation (پشتیبانی برای دستگاه‌هایی که allCellInfo خالی برمی‌گردونن)
+                // اگر fallback خالی بود، تلاش برای cellLocation
                 if (fallback.isEmpty()) {
                     try {
                         val cellLoc = telephonyManager.cellLocation
@@ -169,6 +225,8 @@ class MainActivity : FlutterActivity() {
                 result.success(processCellInfoList(fallback))
             }
         } else {
+            // Android قدیمی: فقط allCellInfo
+            Log.d(TAG, "Android < 11: استفاده از allCellInfo")
             val list = try {
                 telephonyManager.allCellInfo ?: emptyList()
             } catch (e: Exception) {
