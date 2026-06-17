@@ -368,17 +368,33 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // اجرای اسکن Wi-Fi - حتی اگر GPS خاموش باشد
-      final scanResult = await WifiScanner.performScan();
-      
-      // اجرای اسکن Cell (برای موقعیت‌یابی Outdoor)
-      CellScanResult? cellScanResult;
-      try {
-        cellScanResult = await CellScanner.performScan();
-      } catch (e) {
-        debugPrint('Cell scan failed: $e');
-        // ادامه می‌دهیم حتی اگر Cell scan شکست بخورد
+      // دریافت GPS به‌صورت موازی با اسکن
+      if (_useGeolocation && _currentPosition == null) {
+        try {
+          final pos = await LocationService.getCurrentPosition();
+          if (pos != null && mounted) {
+            setState(() => _currentPosition = pos);
+          }
+        } catch (e) {
+          debugPrint('GPS fetch in scan: $e');
+        }
       }
+
+      // اجرای اسکن Wi-Fi و Cell به‌صورت موازی
+      final results = await Future.wait([
+        WifiScanner.performScan(),
+        CellScanner.performScan().catchError((e) {
+          debugPrint('Cell scan failed: $e');
+          return CellScanResult(
+            deviceId: 'unknown',
+            timestamp: DateTime.now(),
+            neighboringCells: [],
+          );
+        }),
+      ]);
+
+      final scanResult = results[0] as WifiScanResult;
+      final cellScanResult = results[1] as CellScanResult;
 
       // ثبت تاریخچه اسکن
       await _dataLogger.logWifiScan(scanResult);
@@ -386,14 +402,13 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _currentScanResult = scanResult;
-        _expandedSignalResults = true; // باز کردن بخش نتایج
+        _expandedSignalResults = true;
       });
 
-      // بررسی اینکه آیا سیگنالی (Wi-Fi یا Cell) پیدا شده است
+      // بررسی سیگنال
       final hasWifi = scanResult.accessPoints.isNotEmpty;
-      final hasCell = cellScanResult != null && 
-                      (cellScanResult.servingCell != null || 
-                       cellScanResult.neighboringCells.isNotEmpty);
+      final hasCell = cellScanResult.servingCell != null ||
+          cellScanResult.neighboringCells.isNotEmpty;
 
       if (!hasWifi && !hasCell) {
         if (mounted) {
@@ -414,32 +429,18 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      // ذخیره خودکار در CSV (قبل از هر پردازشی)
-      await AutoCsvService.saveScanToCsv(
-        scanResult: scanResult,
-        cellScanResult: cellScanResult,
-        gpsPosition: _currentPosition,
-        knnEstimate: null, // بعداً پر می‌شود
-        isReliable: null,
-        isNewLocation: null,
-        gpsKnnDistance: null,
-      );
-
       // اگر در حالت آموزش نیستیم، تخمین موقعیت یکپارچه انجام می‌دهیم
       if (!_isTrainingMode && _deviceId != null) {
-        // استفاده از UnifiedLocalizationService برای پشتیبانی از Indoor و Outdoor
         final unifiedResult = await _unifiedLocalizationService.performLocalization(
           deviceId: _deviceId!,
           preferIndoor: true,
         );
 
-        // بارگذاری مسیر حرکت
         _trajectory = await _unifiedLocalizationService.getRecentTrajectory(
           deviceId: _deviceId!,
           limit: 50,
         );
 
-        // پیش‌بینی مسیر آینده
         _pathPrediction = await _unifiedLocalizationService.predictPath(
           deviceId: _deviceId!,
           method: 'markov',
@@ -448,7 +449,6 @@ class _HomePageState extends State<HomePage> {
 
         final estimate = unifiedResult.estimate;
 
-        // بررسی اطمینان موقعیت
         final confidenceResult = await _locationConfidenceService.checkLocationConfidence(
           knnEstimate: estimate,
           gpsPosition: _currentPosition,
@@ -461,7 +461,7 @@ class _HomePageState extends State<HomePage> {
           _unifiedResult = unifiedResult;
         });
 
-        // ذخیره مجدد CSV با اطلاعات کامل (KNN و confidence)
+        // ذخیره یکبار با تمام داده‌های کامل
         await AutoCsvService.saveScanToCsv(
           scanResult: scanResult,
           cellScanResult: cellScanResult,
@@ -549,9 +549,10 @@ class _HomePageState extends State<HomePage> {
           });
         }
       } else {
-        // در حالت آموزش، فقط CSV را به‌روزرسانی می‌کنیم
+        // در حالت آموزش، ذخیره CSV با داده‌های WiFi + BTS + GPS
         await AutoCsvService.saveScanToCsv(
           scanResult: scanResult,
+          cellScanResult: cellScanResult,
           gpsPosition: _currentPosition,
           knnEstimate: null,
           isReliable: null,
