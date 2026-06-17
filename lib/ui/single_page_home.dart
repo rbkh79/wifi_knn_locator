@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../config.dart';
 import '../wifi_scanner.dart';
 import '../cell_scanner.dart';
@@ -46,6 +47,11 @@ class _SinglePageLocalizationScreenState
   LocationEstimate? _currentPosition;
   EnvironmentType _environmentType = EnvironmentType.unknown;
   List<LocationEstimate> _trajectoryHistory = [];
+
+  // داده‌های اسکن برای ذخیره در حالت پژوهشگر
+  WifiScanResult? _lastWifiScan;
+  CellScanResult? _lastCellScan;
+  Position? _lastGpsPosition;
 
   // اطلاعات اپراتور
   String _operatorName = 'نامشناخته';
@@ -166,6 +172,13 @@ class _SinglePageLocalizationScreenState
 
       final gpsPosition = await LocationService.getCurrentPosition();
 
+      // ذخیره برای استفاده در حالت پژوهشگر
+      setState(() {
+        _lastWifiScan = wifiResult;
+        _lastCellScan = cellResult;
+        _lastGpsPosition = gpsPosition;
+      });
+
       // موقعیت‌یابی یکپارچه
       final result = await _localizationService.performLocalization(
         deviceId: 'user-device',
@@ -233,6 +246,7 @@ class _SinglePageLocalizationScreenState
     }
 
     try {
+      // ذخیره موقعیت در location_history
       await _database.insertLocationHistory(
         LocationHistoryEntry(
           deviceId: 'user-device',
@@ -244,10 +258,42 @@ class _SinglePageLocalizationScreenState
         ),
       );
 
+      // ذخیره BTS در cell_fingerprints (اگر BTS اسکن شده باشد)
+      if (_lastCellScan != null && _lastCellScan!.allCells.isNotEmpty) {
+        final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
+        await _database.insertCellFingerprint(
+          CellFingerprintEntry(
+            fingerprintId: fingerprintId,
+            latitude: _currentPosition!.latitude,
+            longitude: _currentPosition!.longitude,
+            zoneLabel: _environmentTypeLabel(),
+            cellTowers: _lastCellScan!.allCells,
+            createdAt: DateTime.now(),
+            deviceId: 'user-device',
+          ),
+        );
+        debugPrint('BTS fingerprint saved: ${_lastCellScan!.allCells.length} cells');
+      }
+
+      // ذخیره GPS در location_history (اگر GPS موجود باشد)
+      if (_lastGpsPosition != null) {
+        await _database.insertLocationHistory(
+          LocationHistoryEntry(
+            deviceId: 'user-device',
+            latitude: _lastGpsPosition!.latitude,
+            longitude: _lastGpsPosition!.longitude,
+            zoneLabel: 'GPS',
+            confidence: 1.0,
+            timestamp: DateTime.now(),
+          ),
+        );
+        debugPrint('GPS position saved: ${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}');
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✓ موقعیت با موفقیت ذخیره شد'),
+            content: Text('✓ موقعیت، BTS و GPS با موفقیت ذخیره شدند'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
