@@ -103,6 +103,7 @@ class _HomePageState extends State<HomePage> {
   bool _loading = false;
   bool _isTrainingMode = false;
   WifiScanResult? _currentScanResult;
+  CellScanResult? _currentCellScanResult;
   LocationEstimate? _locationEstimate;
   MovementPrediction? _movementPrediction;
   Position? _currentPosition;
@@ -361,6 +362,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _loading = true;
       _currentScanResult = null;
+      _currentCellScanResult = null;
       _locationEstimate = null;
       _movementPrediction = null;
       _unifiedResult = null;
@@ -402,6 +404,7 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         _currentScanResult = scanResult;
+        _currentCellScanResult = cellScanResult;
         _expandedSignalResults = true;
       });
 
@@ -567,7 +570,7 @@ class _HomePageState extends State<HomePage> {
             content: Text(
               _isTrainingMode
                   ? 'اسکن انجام شد. ${scanResult.accessPoints.length} شبکه یافت شد.'
-                  : 'اسکن با موفقیت انجام شد! ${scanResult.accessPoints.length} شبکه Wi-Fi و ${cellScanResult?.allCells.length ?? 0} دکل BTS یافت شد.',
+                  : 'اسکن با موفقیت انجام شد! ${scanResult.accessPoints.length} شبکه Wi-Fi و ${cellScanResult.allCells.length} دکل BTS یافت شد.',
             ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
@@ -638,8 +641,9 @@ class _HomePageState extends State<HomePage> {
 
     try {
       await _ensureTrainingSession();
-      // انجام اسکن Wi-Fi
+      // انجام اسکن Wi-Fi و BTS
       final scanResult = await WifiScanner.performScan();
+      final cellScanResult = await CellScanner.performScan();
       await _dataLogger.logWifiScan(scanResult);
 
       if (scanResult.accessPoints.isEmpty) {
@@ -689,6 +693,7 @@ class _HomePageState extends State<HomePage> {
         longitude: point.longitude,
         zoneLabel: zoneLabel.isEmpty ? null : zoneLabel,
         scanResult: validatedScanResult,
+        cellScanResult: cellScanResult,
         sessionId: _currentSessionId,
         contextId: _currentContext,
       );
@@ -703,7 +708,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('نقطه مرجع با ${scanResult.accessPoints.length} AP ذخیره شد!'),
+            content: Text('نقطه مرجع با ${scanResult.accessPoints.length} AP و ${cellScanResult.allCells.length} BTS ذخیره شد!'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -866,6 +871,7 @@ class _HomePageState extends State<HomePage> {
         longitude: lon,
         zoneLabel: _zoneController.text.isEmpty ? null : _zoneController.text,
         scanResult: validatedScanResult,
+        cellScanResult: _currentCellScanResult,
         sessionId: _currentSessionId,
         contextId: _currentContext,
       );
@@ -875,6 +881,7 @@ class _HomePageState extends State<HomePage> {
       _lonController.clear();
       _zoneController.clear();
       _currentScanResult = null;
+      _currentCellScanResult = null;
 
       await _updateFingerprintCount();
       await _loadFingerprintEntries();

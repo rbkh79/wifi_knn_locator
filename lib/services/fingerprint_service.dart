@@ -22,6 +22,7 @@ class FingerprintService {
     required double longitude,
     String? zoneLabel,
     WifiScanResult? scanResult,
+    CellScanResult? cellScanResult,
     String? sessionId,
     String? contextId,
   }) async {
@@ -51,6 +52,21 @@ class FingerprintService {
 
     // ذخیره در پایگاه داده
     await _database.insertFingerprint(fingerprint);
+
+    if (cellScanResult != null && cellScanResult.allCells.isNotEmpty) {
+      final cellFingerprint = CellFingerprintEntry(
+        fingerprintId: 'cell_$fingerprintId',
+        latitude: latitude,
+        longitude: longitude,
+        zoneLabel: zoneLabel,
+        sessionId: sessionId,
+        contextId: contextId,
+        cellTowers: cellScanResult.allCells,
+        createdAt: DateTime.now(),
+        deviceId: deviceId,
+      );
+      await _database.insertCellFingerprint(cellFingerprint);
+    }
 
     debugPrint('Fingerprint saved: $fingerprintId at ($latitude, $longitude)');
 

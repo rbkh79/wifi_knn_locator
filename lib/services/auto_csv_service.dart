@@ -220,13 +220,16 @@ class AutoCsvService {
   /// افزودن اسکن به CSV (برای استفاده در Map Reference Point Picker)
   static Future<void> addScan({
     required WifiScanResult scanResult,
+    CellScanResult? cellScanResult,
+    Position? gpsPosition,
     required double latitude,
     required double longitude,
     String? zoneLabel,
   }) async {
     await saveScanToCsv(
       scanResult: scanResult,
-      gpsPosition: null, // در این حالت GPS نداریم
+      cellScanResult: cellScanResult,
+      gpsPosition: gpsPosition,
       knnEstimate: null,
       isReliable: null,
       isNewLocation: null,
@@ -265,4 +268,3 @@ class AutoCsvService {
     }
   }
 }
-

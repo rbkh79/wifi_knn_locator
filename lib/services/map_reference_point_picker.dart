@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data_model.dart';
 import '../wifi_scanner.dart';
+import '../cell_scanner.dart';
 import '../services/fingerprint_service.dart';
 import '../services/auto_csv_service.dart';
 import '../services/location_service.dart';
@@ -252,8 +253,9 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
     });
     
     try {
-      // انجام اسکن Wi-Fi
+      // انجام اسکن Wi-Fi و BTS
       final scanResult = await WifiScanner.performScan();
+      final cellScanResult = await CellScanner.performScan();
       
       // استفاده از مختصات فیزیکی به عنوان zoneLabel
       final zoneLabel = 'MapRef_${_selectedPoint!.index}_X${_selectedPoint!.x.toStringAsFixed(2)}_Y${_selectedPoint!.y.toStringAsFixed(2)}';
@@ -264,6 +266,7 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
         longitude: _selectedPoint!.position.longitude,
         zoneLabel: zoneLabel,
         scanResult: scanResult,
+        cellScanResult: cellScanResult,
         sessionId: widget.sessionId,
         contextId: widget.contextId,
       );
@@ -271,6 +274,7 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
       // ذخیره در CSV خودکار
       await AutoCsvService.addScan(
         scanResult: scanResult,
+        cellScanResult: cellScanResult,
         latitude: _selectedPoint!.position.latitude,
         longitude: _selectedPoint!.position.longitude,
         zoneLabel: zoneLabel,
@@ -285,7 +289,7 @@ class _MapReferencePointPickerState extends State<MapReferencePointPicker> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('RSSI برای نقطه ${_selectedPoint!.index} ثبت شد! (${scanResult.accessPoints.length} AP)'),
+            content: Text('RSSI برای نقطه ${_selectedPoint!.index} ثبت شد! (${scanResult.accessPoints.length} AP، ${cellScanResult.allCells.length} BTS)'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),

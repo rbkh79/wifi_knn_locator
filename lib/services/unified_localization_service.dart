@@ -27,6 +27,7 @@ class UnifiedLocalizationResult {
   final LocationEstimate? estimate;
   final String environmentType; // 'indoor', 'outdoor', 'hybrid', 'unknown'
   final double confidence;
+  final int kUsed;
   final String? zoneLabel;
   final IndoorLocalizationResult? indoorResult;
   final OutdoorLocalizationResult? outdoorResult;
@@ -35,6 +36,7 @@ class UnifiedLocalizationResult {
     this.estimate,
     required this.environmentType,
     required this.confidence,
+    this.kUsed = 3,
     this.zoneLabel,
     this.indoorResult,
     this.outdoorResult,
@@ -72,11 +74,12 @@ class UnifiedLocalizationService {
   Future<UnifiedLocalizationResult> performLocalization({
     required String deviceId,
     bool preferIndoor = true,
+    int k = 3,
   }) async {
     try {
       // انجام مکان‌یابی Indoor و Outdoor به صورت موازی
-      final indoorFuture = _indoorService.performIndoorLocalization();
-      final outdoorFuture = _outdoorService.performOutdoorLocalization();
+      final indoorFuture = _indoorService.performIndoorLocalization(k: k);
+      final outdoorFuture = _outdoorService.performOutdoorLocalization(k: k);
 
       final indoorResult = await indoorFuture;
       final outdoorResult = await outdoorFuture;
@@ -144,6 +147,7 @@ class UnifiedLocalizationService {
         estimate: finalEstimate,
         environmentType: environmentType,
         confidence: confidence,
+        kUsed: k,
         zoneLabel: finalEstimate?.zoneLabel,
         indoorResult: indoorResult,
         outdoorResult: outdoorResult,
@@ -153,6 +157,7 @@ class UnifiedLocalizationService {
       return UnifiedLocalizationResult(
         environmentType: 'unknown',
         confidence: 0.0,
+        kUsed: k,
       );
     }
   }

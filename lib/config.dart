@@ -15,7 +15,7 @@ class AppConfig {
 
   // پارامترهای پایگاه داده
   static const String databaseName = 'wifi_fingerprints.db';
-  static const int databaseVersion = 4; // افزایش نسخه برای افزودن جداول سلولی
+  static const int databaseVersion = 5; // اطمینان از ساخت/ترمیم جداول سلولی
 
   // پارامترهای حریم خصوصی
   static const bool hashDeviceMac = true;
@@ -56,4 +56,3 @@ class AppConfig {
   static const int validationScanCount = 3; // تعداد اسکن برای validation
   static const double maxRssiVariance = 15.0; // حداکثر واریانس RSSI برای validation (dBm)
 }
-

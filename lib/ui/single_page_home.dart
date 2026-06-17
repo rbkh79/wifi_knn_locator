@@ -4,6 +4,8 @@ import '../wifi_scanner.dart';
 import '../cell_scanner.dart';
 import '../services/unified_localization_service.dart';
 import '../services/settings_service.dart';
+import '../services/auto_csv_service.dart';
+import '../services/location_service.dart';
 import '../data_model.dart';
 import '../local_database.dart';
 import '../models/environment_type.dart';
@@ -162,6 +164,8 @@ class _SinglePageLocalizationScreenState
       final cellResult = await CellScanner.performScan();
       debugPrint('Cell Scan: ${cellResult.allCells.length} cells found');
 
+      final gpsPosition = await LocationService.getCurrentPosition();
+
       // موقعیت‌یابی یکپارچه
       final result = await _localizationService.performLocalization(
         deviceId: 'user-device',
@@ -173,6 +177,16 @@ class _SinglePageLocalizationScreenState
       _activeSignalCount = wifiResult.accessPoints.length + cellResult.allCells.length;
       _kUsed = result.kUsed;
       _currentK = result.kUsed;
+
+      await AutoCsvService.saveScanToCsv(
+        scanResult: wifiResult,
+        cellScanResult: cellResult,
+        gpsPosition: gpsPosition,
+        knnEstimate: result.estimate,
+        isReliable: result.isReliable,
+        isNewLocation: null,
+        gpsKnnDistance: null,
+      );
 
       setState(() {
         if (result.estimate != null && result.isReliable) {

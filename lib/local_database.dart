@@ -191,6 +191,9 @@ class LocalDatabase {
     if (oldVersion < 4) {
       await _onUpgradeV4(db);
     }
+    if (oldVersion < 5) {
+      await _onUpgradeV4(db);
+    }
     debugPrint('Database upgrade from $oldVersion to $newVersion');
   }
 
@@ -1057,7 +1060,6 @@ class LocalDatabase {
     debugPrint('All cell fingerprints cleared');
   }
 }
-
 
 
 
