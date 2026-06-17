@@ -1,18 +1,16 @@
 import 'dart:io';
-import 'dart:convert';
 import 'dart:math' as math;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:csv/csv.dart';
 import 'package:geolocator/geolocator.dart';
 import '../data_model.dart';
-import '../utils/privacy_utils.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 
-/// سرویس ذخیره خودکار CSV در هر اسکن Wi-Fi
+/// سرویس ذخیره خودکار CSV در هر اسکن Wi-Fi و BTS
 class AutoCsvService {
-  static const String _csvFileName = 'wifi_scans_auto.csv';
+  static const String _csvFileName = 'wifi_bts_scans_auto.csv';
   static File? _csvFile;
   static bool _headerWritten = false;
 
@@ -45,30 +43,42 @@ class AutoCsvService {
       'Date',
       'Time',
       'Device ID (Hashed MAC)',
+      // GPS
       'GPS Latitude',
       'GPS Longitude',
       'GPS Accuracy (m)',
+      // KNN
       'KNN Latitude',
       'KNN Longitude',
       'KNN Confidence',
       'Distance GPS-KNN (m)',
       'Is Reliable',
       'Is New Location',
-      'BSSID',
-      'RSSI',
-      'Frequency',
-      'SSID',
+      // Wi-Fi
+      'WiFi BSSID',
+      'WiFi RSSI (dBm)',
+      'WiFi Frequency (MHz)',
+      'WiFi SSID',
+      // BTS
+      'BTS Cell ID',
+      'BTS LAC',
+      'BTS TAC',
+      'BTS MCC',
+      'BTS MNC',
+      'BTS Signal (dBm)',
+      'BTS Network Type',
+      'BTS PCI',
+      'BTS Serving',
     ];
 
     final csvString = const ListToCsvConverter().convert([header]);
     await _csvFile!.writeAsString(csvString, mode: FileMode.write);
   }
 
-  /// ذخیره خودکار یک اسکن Wi-Fi در CSV
-  /// 
-  /// این متد در هر بار اسکن Wi-Fi فراخوانی می‌شود و اطلاعات را به CSV اضافه می‌کند
+  /// ذخیره خودکار یک اسکن Wi-Fi + BTS در CSV
   static Future<void> saveScanToCsv({
     required WifiScanResult scanResult,
+    CellScanResult? cellScanResult,
     Position? gpsPosition,
     LocationEstimate? knnEstimate,
     bool? isReliable,
@@ -78,10 +88,7 @@ class AutoCsvService {
     double? referenceLongitude,
     String? referenceZone,
   }) async {
-    if (_csvFile == null) {
-      await initialize();
-    }
-
+    if (_csvFile == null) await initialize();
     if (_csvFile == null || !_headerWritten) {
       debugPrint('CSV file not initialized');
       return;
@@ -93,60 +100,73 @@ class AutoCsvService {
       final time = '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}';
       final deviceId = scanResult.deviceId;
 
-      // اگر هیچ AP یافت نشده، یک ردیف خالی اضافه می‌کنیم
+      // ستون‌های مشترک (GPS + KNN)
+      final commonPrefix = [
+        timestamp.toIso8601String(),
+        date,
+        time,
+        deviceId,
+        gpsPosition?.latitude ?? referenceLatitude ?? '',
+        gpsPosition?.longitude ?? referenceLongitude ?? '',
+        gpsPosition?.accuracy ?? '',
+        knnEstimate?.latitude ?? '',
+        knnEstimate?.longitude ?? '',
+        knnEstimate?.confidence ?? '',
+        gpsKnnDistance ?? '',
+        isReliable?.toString() ?? '',
+        isNewLocation?.toString() ?? '',
+      ];
+
+      // ردیف‌های Wi-Fi
       if (scanResult.accessPoints.isEmpty) {
         final row = [
-          timestamp.toIso8601String(),
-          date,
-          time,
-          deviceId,
-          gpsPosition?.latitude ?? referenceLatitude ?? '',
-          gpsPosition?.longitude ?? referenceLongitude ?? '',
-          gpsPosition?.accuracy ?? '',
-          knnEstimate?.latitude ?? '',
-          knnEstimate?.longitude ?? '',
-          knnEstimate?.confidence ?? '',
-          gpsKnnDistance ?? '',
-          isReliable?.toString() ?? '',
-          isNewLocation?.toString() ?? '',
-          '', // BSSID
-          '', // RSSI
-          '', // Frequency
-          referenceZone ?? '', // SSID column reused برای نام ناحیه
+          ...commonPrefix,
+          '', '', '', referenceZone ?? '', // WiFi columns empty
+          '', '', '', '', '', '', '', '', '', // BTS columns empty
         ];
-
         final csvString = const ListToCsvConverter().convert([row]);
-        await _csvFile!.writeAsString(csvString, mode: FileMode.append);
-        return;
+        await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+      } else {
+        for (final ap in scanResult.accessPoints) {
+          final row = [
+            ...commonPrefix,
+            ap.bssid,
+            ap.rssi,
+            ap.frequency ?? '',
+            referenceZone ?? ap.ssid ?? '',
+            // BTS columns empty (BTS ردیف‌های جداگانه دارد)
+            '', '', '', '', '', '', '', '', '',
+          ];
+          final csvString = const ListToCsvConverter().convert([row]);
+          await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+        }
       }
 
-      // برای هر AP یک ردیف اضافه می‌کنیم
-      for (final ap in scanResult.accessPoints) {
-        final row = [
-          timestamp.toIso8601String(),
-          date,
-          time,
-          deviceId,
-          gpsPosition?.latitude ?? referenceLatitude ?? '',
-          gpsPosition?.longitude ?? referenceLongitude ?? '',
-          gpsPosition?.accuracy ?? '',
-          knnEstimate?.latitude ?? '',
-          knnEstimate?.longitude ?? '',
-          knnEstimate?.confidence ?? '',
-          gpsKnnDistance ?? '',
-          isReliable?.toString() ?? '',
-          isNewLocation?.toString() ?? '',
-          ap.bssid,
-          ap.rssi,
-          ap.frequency ?? '',
-          referenceZone ?? ap.ssid ?? '',
-        ];
-
-        final csvString = const ListToCsvConverter().convert([row]);
-        await _csvFile!.writeAsString(csvString, mode: FileMode.append);
+      // ردیف‌های BTS
+      if (cellScanResult != null) {
+        final allCells = cellScanResult.allCells;
+        for (final cell in allCells) {
+          final isServing = cellScanResult.servingCell != null &&
+              cell.uniqueId == cellScanResult.servingCell!.uniqueId;
+          final row = [
+            ...commonPrefix,
+            '', '', '', '', // WiFi columns empty
+            cell.cellId ?? '',
+            cell.lac ?? '',
+            cell.tac ?? '',
+            cell.mcc ?? '',
+            cell.mnc ?? '',
+            cell.signalStrength ?? '',
+            cell.networkType ?? '',
+            cell.pci ?? '',
+            isServing ? 'true' : 'false',
+          ];
+          final csvString = const ListToCsvConverter().convert([row]);
+          await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+        }
       }
 
-      debugPrint('Scan saved to auto CSV: ${scanResult.accessPoints.length} APs');
+      debugPrint('CSV saved: ${scanResult.accessPoints.length} WiFi APs, ${cellScanResult?.allCells.length ?? 0} BTS cells');
     } catch (e) {
       debugPrint('Error saving scan to CSV: $e');
     }

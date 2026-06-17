@@ -417,6 +417,7 @@ class _HomePageState extends State<HomePage> {
       // ذخیره خودکار در CSV (قبل از هر پردازشی)
       await AutoCsvService.saveScanToCsv(
         scanResult: scanResult,
+        cellScanResult: cellScanResult,
         gpsPosition: _currentPosition,
         knnEstimate: null, // بعداً پر می‌شود
         isReliable: null,
@@ -463,6 +464,7 @@ class _HomePageState extends State<HomePage> {
         // ذخیره مجدد CSV با اطلاعات کامل (KNN و confidence)
         await AutoCsvService.saveScanToCsv(
           scanResult: scanResult,
+          cellScanResult: cellScanResult,
           gpsPosition: _currentPosition,
           knnEstimate: estimate,
           isReliable: confidenceResult.isReliable,
@@ -564,7 +566,7 @@ class _HomePageState extends State<HomePage> {
             content: Text(
               _isTrainingMode
                   ? 'اسکن انجام شد. ${scanResult.accessPoints.length} شبکه یافت شد.'
-                  : 'اسکن با موفقیت انجام شد! ${scanResult.accessPoints.length} شبکه یافت شد.',
+                  : 'اسکن با موفقیت انجام شد! ${scanResult.accessPoints.length} شبکه Wi-Fi و ${cellScanResult?.allCells.length ?? 0} دکل BTS یافت شد.',
             ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
@@ -623,7 +625,7 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('در حال اسکن Wi-Fi و ذخیره نقطه مرجع...'),
+          content: Text('در حال اسکن Wi-Fi and BTS و ذخیره نقطه مرجع...'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -764,7 +766,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'بعد از تأیید، اسکن Wi-Fi انجام می‌شود و داده‌ها ذخیره می‌شوند.',
+                    'بعد از تأیید، اسکن Wi-Fi and BTS انجام می‌شود و داده‌ها ذخیره می‌شوند.',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.blue.shade900,
@@ -917,7 +919,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('WiFi KNN Locator'),
+        title: const Text('Wi-Fi and BTS KNN Locator'),
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
@@ -1078,7 +1080,7 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'برای اضافه کردن نقطه مرجع، روی نقشه کلیک کنید. اسکن Wi-Fi به صورت خودکار انجام می‌شود.',
+                          'برای اضافه کردن نقطه مرجع، روی نقشه کلیک کنید. اسکن Wi-Fi and BTS به صورت خودکار انجام می‌شود.',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.blue.shade900,
@@ -1490,7 +1492,7 @@ class _HomePageState extends State<HomePage> {
       child: ExpansionTile(
         leading: Icon(Icons.wifi, color: Colors.blue.shade700),
         title: const Text(
-          'اسکن Wi-Fi',
+          'اسکن Wi-Fi and BTS',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: _currentScanResult != null
@@ -1567,7 +1569,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             )
                           : const Icon(Icons.search),
-                    label: Text(_loading ? 'در حال اسکن...' : 'شروع اسکن Wi-Fi'),
+                    label: Text(_loading ? 'در حال اسکن...' : 'شروع اسکن Wi-Fi and BTS'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue.shade700,
                         foregroundColor: Colors.white,
@@ -2448,7 +2450,7 @@ class _HomePageState extends State<HomePage> {
                             ],
                             const SizedBox(height: 8),
                             Text(
-                              '💡 در هر اسکن Wi-Fi، داده‌ها به صورت خودکار در CSV ذخیره می‌شوند.',
+                              '💡 در هر اسکن Wi-Fi and BTS، داده‌ها به صورت خودکار در CSV ذخیره می‌شوند.',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontStyle: FontStyle.italic,
