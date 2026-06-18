@@ -23,14 +23,17 @@ class AutoCsvService {
 
       // بررسی اینکه آیا فایل وجود دارد و header نوشته شده است
       if (await _csvFile!.exists()) {
-        _headerWritten = true;
+        final content = await _csvFile!.readAsString();
+        _headerWritten = content.isNotEmpty && content.contains('Timestamp');
       } else {
         // نوشتن header در اولین بار
         await _writeHeader();
         _headerWritten = true;
       }
+      debugPrint('AutoCsvService initialized: $filePath, headerWritten=$_headerWritten');
     } catch (e) {
       debugPrint('Error initializing auto CSV service: $e');
+      // حتی اگر خطا داد، تلاش می‌کنیم دوباره در saveScanToCsv
     }
   }
 
@@ -88,13 +91,28 @@ class AutoCsvService {
     double? referenceLongitude,
     String? referenceZone,
   }) async {
-    if (_csvFile == null) await initialize();
-    if (_csvFile == null || !_headerWritten) {
-      debugPrint('CSV file not initialized');
-      return;
-    }
-
     try {
+      // اطمینان از اینکه فایل CSV همیشه آماده است
+      if (_csvFile == null) {
+        try {
+          final directory = await getApplicationDocumentsDirectory();
+          _csvFile = File('${directory.path}/$_csvFileName');
+          debugPrint('CSV file created at: ${_csvFile!.path}');
+        } catch (e) {
+          debugPrint('Cannot create CSV file: $e');
+          return;
+        }
+      }
+
+      // اگر فایل وجود ندارد یا خالی است، header را بنویس
+      final fileExists = await _csvFile!.exists();
+      final fileSize = fileExists ? await _csvFile!.length() : 0;
+      if (!fileExists || fileSize == 0) {
+        await _writeHeader();
+        _headerWritten = true;
+        debugPrint('CSV header written');
+      }
+
       final timestamp = scanResult.timestamp;
       final date = '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}';
       final time = '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}';
@@ -127,7 +145,7 @@ class AutoCsvService {
             '', '', '', '', '', '', '', '', '', // BTS columns empty
           ];
           final csvString = const ListToCsvConverter().convert([row]);
-          await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+          await _csvFile!.writeAsString(csvString, mode: FileMode.append);
         }
         // اگر BTS داریم، ردیف WiFi خالی نمی‌نویسیم (BTS rows below)
       } else {
@@ -142,7 +160,7 @@ class AutoCsvService {
             '', '', '', '', '', '', '', '', '',
           ];
           final csvString = const ListToCsvConverter().convert([row]);
-          await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+          await _csvFile!.writeAsString(csvString, mode: FileMode.append);
         }
       }
 
@@ -166,13 +184,13 @@ class AutoCsvService {
             isServing ? 'true' : 'false',
           ];
           final csvString = const ListToCsvConverter().convert([row]);
-          await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+          await _csvFile!.writeAsString(csvString, mode: FileMode.append);
         }
       }
 
-      debugPrint('CSV saved: ${scanResult.accessPoints.length} WiFi APs, ${cellScanResult?.allCells.length ?? 0} BTS cells');
+      debugPrint('✓ CSV saved: ${scanResult.accessPoints.length} WiFi APs, ${cellScanResult?.allCells.length ?? 0} BTS cells, GPS=${gpsPosition != null}');
     } catch (e) {
-      debugPrint('Error saving scan to CSV: $e');
+      debugPrint('❌ Error saving scan to CSV: $e');
     }
   }
 
