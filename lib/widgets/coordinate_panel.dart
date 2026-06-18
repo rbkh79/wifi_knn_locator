@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../data_model.dart';
 import '../models/environment_type.dart';
 import '../config.dart';
+import '../services/auto_csv_service.dart';
 
 /// پنل مختصات جغرافیایی و اطلاعات پایین صفحه
 class CoordinatePanel extends StatefulWidget {
@@ -182,6 +184,21 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                     _buildMetric('K', '${widget.kUsed}'),
                     _buildMetric('Conf', '$confidencePercent%'),
                   ],
+                ),
+                const SizedBox(height: 8),
+                // دکمه دانلود CSV
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _downloadCsv(context),
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('دانلود فایل CSV (WiFi + BTS + GPS)'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue.shade700,
+                      side: BorderSide(color: Colors.blue.shade300),
+                      minimumSize: const Size.fromHeight(40),
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 16),
@@ -499,5 +516,63 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
     if (confidence >= 0.5) return Colors.blue;
     if (confidence >= 0.3) return Colors.orange;
     return Colors.red;
+  }
+
+  Future<void> _downloadCsv(BuildContext context) async {
+    try {
+      // ابتدا مطمئن شو CSV اولیه‌سازی شده
+      await AutoCsvService.initialize();
+
+      // دریافت مسیر فایل
+      final filePath = await AutoCsvService.getCsvFilePath();
+      if (filePath == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل CSV یافت نشد. ابتدا اسکن کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل CSV خالی است. ابتدا اسکن کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // اشتراک‌گذاری فایل با share_plus
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'WiFi BTS GPS Scan Data',
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ فایل CSV آماده اشتراک‌گذاری شد'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
