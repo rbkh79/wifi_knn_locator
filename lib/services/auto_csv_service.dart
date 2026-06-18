@@ -119,13 +119,17 @@ class AutoCsvService {
 
       // ردیف‌های Wi-Fi
       if (scanResult.accessPoints.isEmpty) {
-        final row = [
-          ...commonPrefix,
-          '', '', '', referenceZone ?? '', // WiFi columns empty
-          '', '', '', '', '', '', '', '', '', // BTS columns empty
-        ];
-        final csvString = const ListToCsvConverter().convert([row]);
-        await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+        // اگر BTS هم خالی است، یک ردیف با داده‌های GPS-only بنویس
+        if (cellScanResult == null || cellScanResult.allCells.isEmpty) {
+          final row = [
+            ...commonPrefix,
+            '', '', '', referenceZone ?? '', // WiFi columns empty
+            '', '', '', '', '', '', '', '', '', // BTS columns empty
+          ];
+          final csvString = const ListToCsvConverter().convert([row]);
+          await _csvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+        }
+        // اگر BTS داریم، ردیف WiFi خالی نمی‌نویسیم (BTS rows below)
       } else {
         for (final ap in scanResult.accessPoints) {
           final row = [

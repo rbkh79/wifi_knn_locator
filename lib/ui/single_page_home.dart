@@ -197,32 +197,43 @@ class _SinglePageLocalizationScreenState
       }
 
       // موقعیت‌یابی یکپارچه
-      final result = await _localizationService.performLocalization(
-        deviceId: 'user-device',
-        k: _currentK,
-      );
+      UnifiedLocalizationResult? localizationResult;
+      try {
+        localizationResult = await _localizationService.performLocalization(
+          deviceId: 'user-device',
+          k: _currentK,
+        );
+      } catch (e) {
+        debugPrint('⚠ خطا در موقعیت‌یابی: $e - ادامه با ذخیره CSV...');
+      }
 
       sw.stop();
       _scanLatencyMs = sw.elapsedMilliseconds;
       _activeSignalCount = wifiResult.accessPoints.length + cellResult.allCells.length;
-      _kUsed = result.kUsed;
-      _currentK = result.kUsed;
+      if (localizationResult != null) {
+        _kUsed = localizationResult.kUsed;
+        _currentK = localizationResult.kUsed;
+      }
 
+      // همیشه CSV را ذخیره کن - حتی اگر موقعیت‌یابی شکست خورد
       await AutoCsvService.saveScanToCsv(
         scanResult: wifiResult,
         cellScanResult: cellResult,
         gpsPosition: gpsPosition,
-        knnEstimate: result.estimate,
-        isReliable: result.isReliable,
+        knnEstimate: localizationResult?.estimate,
+        isReliable: localizationResult?.isReliable,
         isNewLocation: null,
         gpsKnnDistance: null,
       );
 
       setState(() {
-        if (result.estimate != null && result.isReliable) {
-          _currentPosition = result.estimate;
-          _environmentType = _mapEnvironmentTypeFromEnum(result.environmentType);
-          _trajectoryHistory.add(result.estimate!);
+        if (localizationResult != null && localizationResult.estimate != null && localizationResult.isReliable) {
+          _currentPosition = localizationResult.estimate;
+          _environmentType = _mapEnvironmentTypeFromEnum(localizationResult.environmentType);
+          _trajectoryHistory.add(localizationResult.estimate!);
+          _scanState = ScanState.success;
+        } else if (wifiResult.accessPoints.isNotEmpty || cellResult.allCells.isNotEmpty || gpsPosition != null) {
+          // حتی اگر KNN شکست خورد، داده‌های خام را داریم
           _scanState = ScanState.success;
         } else {
           _scanState = ScanState.error;
@@ -253,37 +264,58 @@ class _SinglePageLocalizationScreenState
   Future<void> _savePosition() async {
     debugPrint('=== _savePosition شروع ===');
     debugPrint('_currentPosition: $_currentPosition');
+    debugPrint('_lastWifiScan: ${_lastWifiScan != null ? "exists (${_lastWifiScan!.accessPoints.length} APs)" : "null"}');
     debugPrint('_lastCellScan: ${_lastCellScan != null ? "exists (${_lastCellScan!.allCells.length} cells)" : "null"}');
     debugPrint('_lastGpsPosition: ${_lastGpsPosition != null ? "${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}" : "null"}');
 
-    if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ابتدا اسکن کنید.')),
-      );
-      return;
+    // اگر هیچ داده‌ای برای ذخیره وجود ندارد، ابتدا GPS و BTS را دریافت کن
+    if (_currentPosition == null && _lastWifiScan == null && _lastCellScan == null && _lastGpsPosition == null) {
+      debugPrint('هیچ داده‌ای موجود نیست - دریافت GPS و BTS...');
+      setState(() => _isScanning = true);
+      try {
+        final results = await Future.wait([
+          LocationService.getCurrentPosition(),
+          CellScanner.performScan(),
+        ]);
+        final gpsPos = results[0] as Position?;
+        final cellResult = results[1] as CellScanResult;
+        
+        setState(() {
+          _lastGpsPosition = gpsPos;
+          _lastCellScan = cellResult;
+        });
+        debugPrint('✓ GPS تازه: ${gpsPos != null ? "${gpsPos.latitude}, ${gpsPos.longitude}" : "null"}');
+        debugPrint('✓ BTS تازه: ${cellResult.allCells.length} cells');
+      } catch (e) {
+        debugPrint('❌ خطا در دریافت داده: $e');
+      } finally {
+        setState(() => _isScanning = false);
+      }
     }
 
     int savedCount = 0;
     final errors = <String>[];
 
     try {
-      // ۱. ذخیره موقعیت KNN در location_history
-      try {
-        await _database.insertLocationHistory(
-          LocationHistoryEntry(
-            deviceId: 'user-device',
-            latitude: _currentPosition!.latitude,
-            longitude: _currentPosition!.longitude,
-            zoneLabel: _environmentTypeLabel(),
-            confidence: _currentPosition!.confidence,
-            timestamp: DateTime.now(),
-          ),
-        );
-        savedCount++;
-        debugPrint('✓ KNN location saved');
-      } catch (e) {
-        errors.add('KNN: $e');
-        debugPrint('❌ KNN save error: $e');
+      // ۱. ذخیره موقعیت KNN در location_history (اگر موجود باشد)
+      if (_currentPosition != null) {
+        try {
+          await _database.insertLocationHistory(
+            LocationHistoryEntry(
+              deviceId: 'user-device',
+              latitude: _currentPosition!.latitude,
+              longitude: _currentPosition!.longitude,
+              zoneLabel: _environmentTypeLabel(),
+              confidence: _currentPosition!.confidence,
+              timestamp: DateTime.now(),
+            ),
+          );
+          savedCount++;
+          debugPrint('✓ KNN location saved');
+        } catch (e) {
+          errors.add('KNN: $e');
+          debugPrint('❌ KNN save error: $e');
+        }
       }
 
       // ۲. ذخیره BTS
@@ -291,11 +323,13 @@ class _SinglePageLocalizationScreenState
       if (cellsToSave.isNotEmpty) {
         try {
           final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
+          final refLat = _currentPosition?.latitude ?? _lastGpsPosition?.latitude ?? 0.0;
+          final refLon = _currentPosition?.longitude ?? _lastGpsPosition?.longitude ?? 0.0;
           await _database.insertCellFingerprint(
             CellFingerprintEntry(
               fingerprintId: fingerprintId,
-              latitude: _currentPosition!.latitude,
-              longitude: _currentPosition!.longitude,
+              latitude: refLat,
+              longitude: refLon,
               zoneLabel: _environmentTypeLabel(),
               cellTowers: cellsToSave,
               createdAt: DateTime.now(),
@@ -315,12 +349,15 @@ class _SinglePageLocalizationScreenState
           debugPrint('تلاش مجدد برای اسکن BTS...');
           final freshCell = await CellScanner.performScan();
           if (freshCell.allCells.isNotEmpty) {
+            setState(() => _lastCellScan = freshCell);
             final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
+            final refLat = _currentPosition?.latitude ?? _lastGpsPosition?.latitude ?? 0.0;
+            final refLon = _currentPosition?.longitude ?? _lastGpsPosition?.longitude ?? 0.0;
             await _database.insertCellFingerprint(
               CellFingerprintEntry(
                 fingerprintId: fingerprintId,
-                latitude: _currentPosition!.latitude,
-                longitude: _currentPosition!.longitude,
+                latitude: refLat,
+                longitude: refLon,
                 zoneLabel: _environmentTypeLabel(),
                 cellTowers: freshCell.allCells,
                 createdAt: DateTime.now(),
@@ -345,6 +382,9 @@ class _SinglePageLocalizationScreenState
         debugPrint('GPS null - تلاش مجدد...');
         try {
           gpsToSave = await LocationService.getCurrentPosition();
+          if (gpsToSave != null) {
+            setState(() => _lastGpsPosition = gpsToSave);
+          }
         } catch (e) {
           debugPrint('❌ Fresh GPS error: $e');
         }
@@ -372,20 +412,25 @@ class _SinglePageLocalizationScreenState
         debugPrint('⚠ GPS: موقعیت در دسترس نیست');
       }
 
-      // ۴. ذخیره در CSV (برای حالت پژوهشگر)
+      // ۴. ذخیره در CSV - همیشه اجرا شود حتی بدون WiFi
       try {
-        if (_lastWifiScan != null) {
-          await AutoCsvService.saveScanToCsv(
-            scanResult: _lastWifiScan!,
-            cellScanResult: _lastCellScan,
-            gpsPosition: gpsToSave ?? _lastGpsPosition,
-            knnEstimate: _currentPosition,
-            isReliable: _currentPosition!.confidence >= AppConfig.confidenceThreshold,
-            isNewLocation: null,
-            gpsKnnDistance: null,
-          );
-          debugPrint('✓ CSV saved for research mode');
-        }
+        // اگر WiFi scan نداریم، یک WifiScanResult خالی بسازیم
+        final wifiScan = _lastWifiScan ?? WifiScanResult(
+          deviceId: 'user-device',
+          timestamp: DateTime.now(),
+          accessPoints: [],
+        );
+        await AutoCsvService.saveScanToCsv(
+          scanResult: wifiScan,
+          cellScanResult: _lastCellScan,
+          gpsPosition: gpsToSave ?? _lastGpsPosition,
+          knnEstimate: _currentPosition,
+          isReliable: _currentPosition != null ? _currentPosition!.confidence >= AppConfig.confidenceThreshold : null,
+          isNewLocation: null,
+          gpsKnnDistance: null,
+        );
+        savedCount++;
+        debugPrint('✓ CSV saved: WiFi=${wifiScan.accessPoints.length} APs, BTS=${_lastCellScan?.allCells.length ?? 0} cells, GPS=${gpsToSave != null || _lastGpsPosition != null ? "yes" : "no"}');
       } catch (e) {
         errors.add('CSV: $e');
         debugPrint('❌ CSV save error: $e');
