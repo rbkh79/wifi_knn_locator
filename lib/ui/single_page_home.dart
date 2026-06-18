@@ -372,6 +372,25 @@ class _SinglePageLocalizationScreenState
         debugPrint('⚠ GPS: موقعیت در دسترس نیست');
       }
 
+      // ۴. ذخیره در CSV (برای حالت پژوهشگر)
+      try {
+        if (_lastWifiScan != null) {
+          await AutoCsvService.saveScanToCsv(
+            scanResult: _lastWifiScan!,
+            cellScanResult: _lastCellScan,
+            gpsPosition: gpsToSave ?? _lastGpsPosition,
+            knnEstimate: _currentPosition,
+            isReliable: _currentPosition!.confidence >= AppConfig.confidenceThreshold,
+            isNewLocation: null,
+            gpsKnnDistance: null,
+          );
+          debugPrint('✓ CSV saved for research mode');
+        }
+      } catch (e) {
+        errors.add('CSV: $e');
+        debugPrint('❌ CSV save error: $e');
+      }
+
       // نمایش نتیجه
       if (mounted) {
         if (errors.isEmpty) {
