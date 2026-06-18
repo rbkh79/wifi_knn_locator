@@ -158,32 +158,42 @@ class _SinglePageLocalizationScreenState
     setState(() {
       _isScanning = true;
       _scanState = ScanState.scanning;
+      // پاک کردن داده‌های قبلی
+      _lastWifiScan = null;
+      _lastCellScan = null;
+      _lastGpsPosition = null;
     });
 
     final sw = Stopwatch()..start();
     try {
-      // اسکن Wi-Fi
-      final wifiResult = await WifiScanner.performScan();
-      debugPrint('WiFi Scan: ${wifiResult.accessPoints.length} APs found');
+      // اسکن Wi-Fi، BTS و GPS را موازی اجرا می‌کنیم (سریع‌تر)
+      debugPrint('=== شروع اسکن موازی ===');
+      final results = await Future.wait([
+        WifiScanner.performScan(),
+        CellScanner.performScan(),
+        LocationService.getCurrentPosition(),
+      ]);
 
-      // اسکن سلولی
-      final cellResult = await CellScanner.performScan();
-      debugPrint('Cell Scan: ${cellResult.allCells.length} cells found');
+      final wifiResult = results[0] as WifiScanResult;
+      final cellResult = results[1] as CellScanResult;
+      final gpsPosition = results[2] as Position?;
 
-      final gpsPosition = await LocationService.getCurrentPosition();
-      debugPrint('GPS Position: ${gpsPosition?.latitude}, ${gpsPosition?.longitude}');
+      debugPrint('✓ WiFi: ${wifiResult.accessPoints.length} APs');
+      debugPrint('✓ BTS: ${cellResult.allCells.length} cells');
+      debugPrint('✓ GPS: ${gpsPosition != null ? "${gpsPosition.latitude}, ${gpsPosition.longitude}" : "null"}');
 
-      // ذخیره برای استفاده در حالت پژوهشگر
+      // ذخیره برای استفاده در _savePosition
       setState(() {
         _lastWifiScan = wifiResult;
         _lastCellScan = cellResult;
         _lastGpsPosition = gpsPosition;
       });
-      debugPrint('Saved scan data: WiFi=${wifiResult.accessPoints.length}, BTS=${cellResult.allCells.length}, GPS=${gpsPosition != null}');
 
-      // اگر BTS خالی است، هشدار بده
       if (cellResult.allCells.isEmpty) {
-        debugPrint('⚠ WARNING: No BTS cells found. BTS data will not be saved.');
+        debugPrint('⚠ BTS خالی است - ممکن است مجوز READ_PHONE_STATE نداشته باشید');
+      }
+      if (gpsPosition == null) {
+        debugPrint('⚠ GPS null است - ممکن است سرویس موقعیت غیرفعال باشد');
       }
 
       // موقعیت‌یابی یکپارچه
@@ -219,13 +229,13 @@ class _SinglePageLocalizationScreenState
         }
       });
     } catch (e) {
-      debugPrint('Scan error: $e');
+      debugPrint('❌ Scan error: $e');
       setState(() => _scanState = ScanState.error);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('خطا در اسکن BTS و WiFi. لطفاً دوباره تلاش کنید.'),
+            content: Text('خطا در اسکن: $e'),
             backgroundColor: Colors.red.shade700,
             duration: const Duration(seconds: 3),
           ),
@@ -233,8 +243,6 @@ class _SinglePageLocalizationScreenState
       }
     } finally {
       setState(() => _isScanning = false);
-      
-      // بازگشت به حالت خواموش بعد از 2 ثانیه
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         setState(() => _scanState = ScanState.idle);
@@ -245,54 +253,68 @@ class _SinglePageLocalizationScreenState
   Future<void> _savePosition() async {
     debugPrint('=== _savePosition شروع ===');
     debugPrint('_currentPosition: $_currentPosition');
-    debugPrint('_lastCellScan: ${_lastCellScan != null ? "exists" : "null"}');
-    debugPrint('_lastGpsPosition: ${_lastGpsPosition != null ? "exists" : "null"}');
+    debugPrint('_lastCellScan: ${_lastCellScan != null ? "exists (${_lastCellScan!.allCells.length} cells)" : "null"}');
+    debugPrint('_lastGpsPosition: ${_lastGpsPosition != null ? "${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}" : "null"}');
 
     if (_currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('هنوز موقعیتی برای ذخیره وجود ندارد.'),
-        ),
+        const SnackBar(content: Text('ابتدا اسکن کنید.')),
       );
       return;
     }
 
-    try {
-      // ذخیره موقعیت در location_history
-      await _database.insertLocationHistory(
-        LocationHistoryEntry(
-          deviceId: 'user-device',
-          latitude: _currentPosition!.latitude,
-          longitude: _currentPosition!.longitude,
-          zoneLabel: _environmentTypeLabel(),
-          confidence: _currentPosition!.confidence,
-          timestamp: DateTime.now(),
-        ),
-      );
-      debugPrint('✓ Location history saved');
+    int savedCount = 0;
+    final errors = <String>[];
 
-      // ذخیره BTS در cell_fingerprints (اگر BTS اسکن شده باشد)
-      debugPrint('Checking BTS: _lastCellScan=${_lastCellScan != null}, allCells=${_lastCellScan?.allCells.length ?? 0}');
-      if (_lastCellScan != null && _lastCellScan!.allCells.isNotEmpty) {
-        final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
-        await _database.insertCellFingerprint(
-          CellFingerprintEntry(
-            fingerprintId: fingerprintId,
+    try {
+      // ۱. ذخیره موقعیت KNN در location_history
+      try {
+        await _database.insertLocationHistory(
+          LocationHistoryEntry(
+            deviceId: 'user-device',
             latitude: _currentPosition!.latitude,
             longitude: _currentPosition!.longitude,
             zoneLabel: _environmentTypeLabel(),
-            cellTowers: _lastCellScan!.allCells,
-            createdAt: DateTime.now(),
-            deviceId: 'user-device',
+            confidence: _currentPosition!.confidence,
+            timestamp: DateTime.now(),
           ),
         );
-        debugPrint('✓ BTS fingerprint saved: ${_lastCellScan!.allCells.length} cells');
-      } else {
-        debugPrint('⚠ BTS not saved: _lastCellScan is null or empty, trying to get fresh BTS...');
-        // تلاش برای دریافت BTS مستقیم
+        savedCount++;
+        debugPrint('✓ KNN location saved');
+      } catch (e) {
+        errors.add('KNN: $e');
+        debugPrint('❌ KNN save error: $e');
+      }
+
+      // ۲. ذخیره BTS
+      final cellsToSave = _lastCellScan?.allCells ?? [];
+      if (cellsToSave.isNotEmpty) {
         try {
-          final freshBts = await CellScanner.performScan();
-          if (freshBts.allCells.isNotEmpty) {
+          final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
+          await _database.insertCellFingerprint(
+            CellFingerprintEntry(
+              fingerprintId: fingerprintId,
+              latitude: _currentPosition!.latitude,
+              longitude: _currentPosition!.longitude,
+              zoneLabel: _environmentTypeLabel(),
+              cellTowers: cellsToSave,
+              createdAt: DateTime.now(),
+              deviceId: 'user-device',
+            ),
+          );
+          savedCount++;
+          debugPrint('✓ BTS saved: ${cellsToSave.length} cells');
+        } catch (e) {
+          errors.add('BTS: $e');
+          debugPrint('❌ BTS save error: $e');
+        }
+      } else {
+        debugPrint('⚠ BTS: هیچ سلولی برای ذخیره وجود ندارد');
+        // تلاش مجدد برای دریافت BTS
+        try {
+          debugPrint('تلاش مجدد برای اسکن BTS...');
+          final freshCell = await CellScanner.performScan();
+          if (freshCell.allCells.isNotEmpty) {
             final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
             await _database.insertCellFingerprint(
               CellFingerprintEntry(
@@ -300,74 +322,85 @@ class _SinglePageLocalizationScreenState
                 latitude: _currentPosition!.latitude,
                 longitude: _currentPosition!.longitude,
                 zoneLabel: _environmentTypeLabel(),
-                cellTowers: freshBts.allCells,
+                cellTowers: freshCell.allCells,
                 createdAt: DateTime.now(),
                 deviceId: 'user-device',
               ),
             );
-            debugPrint('✓ Fresh BTS fingerprint saved: ${freshBts.allCells.length} cells');
+            savedCount++;
+            debugPrint('✓ Fresh BTS saved: ${freshCell.allCells.length} cells');
           } else {
-            debugPrint('⚠ Fresh BTS is also empty');
+            debugPrint('⚠ Fresh BTS هم خالی است - مجوز READ_PHONE_STATE را بررسی کنید');
           }
         } catch (e) {
-          debugPrint('❌ Error getting fresh BTS: $e');
+          errors.add('Fresh BTS: $e');
+          debugPrint('❌ Fresh BTS error: $e');
         }
       }
 
-      // ذخیره GPS در location_history (اگر GPS موجود باشد)
-      debugPrint('Checking GPS: _lastGpsPosition=${_lastGpsPosition != null}');
-      if (_lastGpsPosition != null) {
-        await _database.insertLocationHistory(
-          LocationHistoryEntry(
-            deviceId: 'user-device',
-            latitude: _lastGpsPosition!.latitude,
-            longitude: _lastGpsPosition!.longitude,
-            zoneLabel: 'GPS',
-            confidence: 1.0,
-            timestamp: DateTime.now(),
-          ),
-        );
-        debugPrint('✓ GPS position saved: ${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}');
-      } else {
-        debugPrint('⚠ GPS not saved: _lastGpsPosition is null, trying to get fresh GPS...');
-        // تلاش برای دریافت GPS مستقیم
+      // ۳. ذخیره GPS
+      Position? gpsToSave = _lastGpsPosition;
+      if (gpsToSave == null) {
+        // تلاش مجدد برای دریافت GPS
+        debugPrint('GPS null - تلاش مجدد...');
         try {
-          final freshGps = await LocationService.getCurrentPosition();
-          if (freshGps != null) {
-            await _database.insertLocationHistory(
-              LocationHistoryEntry(
-                deviceId: 'user-device',
-                latitude: freshGps.latitude,
-                longitude: freshGps.longitude,
-                zoneLabel: 'GPS',
-                confidence: 1.0,
-                timestamp: DateTime.now(),
-              ),
-            );
-            debugPrint('✓ Fresh GPS position saved: ${freshGps.latitude}, ${freshGps.longitude}');
-          } else {
-            debugPrint('⚠ Fresh GPS is also null');
-          }
+          gpsToSave = await LocationService.getCurrentPosition();
         } catch (e) {
-          debugPrint('❌ Error getting fresh GPS: $e');
+          debugPrint('❌ Fresh GPS error: $e');
         }
       }
 
+      if (gpsToSave != null) {
+        try {
+          await _database.insertLocationHistory(
+            LocationHistoryEntry(
+              deviceId: 'user-device',
+              latitude: gpsToSave.latitude,
+              longitude: gpsToSave.longitude,
+              zoneLabel: 'GPS',
+              confidence: 1.0,
+              timestamp: DateTime.now(),
+            ),
+          );
+          savedCount++;
+          debugPrint('✓ GPS saved: ${gpsToSave.latitude}, ${gpsToSave.longitude}');
+        } catch (e) {
+          errors.add('GPS: $e');
+          debugPrint('❌ GPS save error: $e');
+        }
+      } else {
+        debugPrint('⚠ GPS: موقعیت در دسترس نیست');
+      }
+
+      // نمایش نتیجه
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✓ موقعیت، BTS و GPS با موفقیت ذخیره شدند'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (errors.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✓ $savedCount مورد با موفقیت ذخیره شد'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } else {
+          final msg = savedCount > 0
+              ? '⚠ $savedCount مورد ذخیره شد، خطا: ${errors.join(", ")}'
+              : '❌ خطا در ذخیره: ${errors.join(", ")}';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: savedCount > 0 ? Colors.orange : Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
-      debugPrint('❌ Error in _savePosition: $e');
+      debugPrint('❌ خطای غیرمنتظره در _savePosition: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطا در ذخیره: $e'),
+            content: Text('خطا: $e'),
             backgroundColor: Colors.red,
           ),
         );
