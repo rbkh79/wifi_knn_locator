@@ -921,6 +921,7 @@ class LocalDatabase {
               'network_type': cell.networkType,
               'psc': cell.psc,
               'pci': cell.pci,
+              // earfcn در جدول وجود ندارد، ذخیره نمی‌شود
             },
           );
         }

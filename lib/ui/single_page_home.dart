@@ -171,6 +171,7 @@ class _SinglePageLocalizationScreenState
       debugPrint('Cell Scan: ${cellResult.allCells.length} cells found');
 
       final gpsPosition = await LocationService.getCurrentPosition();
+      debugPrint('GPS Position: ${gpsPosition?.latitude}, ${gpsPosition?.longitude}');
 
       // ذخیره برای استفاده در حالت پژوهشگر
       setState(() {
@@ -178,6 +179,12 @@ class _SinglePageLocalizationScreenState
         _lastCellScan = cellResult;
         _lastGpsPosition = gpsPosition;
       });
+      debugPrint('Saved scan data: WiFi=${wifiResult.accessPoints.length}, BTS=${cellResult.allCells.length}, GPS=${gpsPosition != null}');
+
+      // اگر BTS خالی است، هشدار بده
+      if (cellResult.allCells.isEmpty) {
+        debugPrint('⚠ WARNING: No BTS cells found. BTS data will not be saved.');
+      }
 
       // موقعیت‌یابی یکپارچه
       final result = await _localizationService.performLocalization(
@@ -236,6 +243,11 @@ class _SinglePageLocalizationScreenState
   }
 
   Future<void> _savePosition() async {
+    debugPrint('=== _savePosition شروع ===');
+    debugPrint('_currentPosition: $_currentPosition');
+    debugPrint('_lastCellScan: ${_lastCellScan != null ? "exists" : "null"}');
+    debugPrint('_lastGpsPosition: ${_lastGpsPosition != null ? "exists" : "null"}');
+
     if (_currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -257,8 +269,10 @@ class _SinglePageLocalizationScreenState
           timestamp: DateTime.now(),
         ),
       );
+      debugPrint('✓ Location history saved');
 
       // ذخیره BTS در cell_fingerprints (اگر BTS اسکن شده باشد)
+      debugPrint('Checking BTS: _lastCellScan=${_lastCellScan != null}, allCells=${_lastCellScan?.allCells.length ?? 0}');
       if (_lastCellScan != null && _lastCellScan!.allCells.isNotEmpty) {
         final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
         await _database.insertCellFingerprint(
@@ -272,10 +286,36 @@ class _SinglePageLocalizationScreenState
             deviceId: 'user-device',
           ),
         );
-        debugPrint('BTS fingerprint saved: ${_lastCellScan!.allCells.length} cells');
+        debugPrint('✓ BTS fingerprint saved: ${_lastCellScan!.allCells.length} cells');
+      } else {
+        debugPrint('⚠ BTS not saved: _lastCellScan is null or empty, trying to get fresh BTS...');
+        // تلاش برای دریافت BTS مستقیم
+        try {
+          final freshBts = await CellScanner.performScan();
+          if (freshBts.allCells.isNotEmpty) {
+            final fingerprintId = 'cell_${DateTime.now().millisecondsSinceEpoch}';
+            await _database.insertCellFingerprint(
+              CellFingerprintEntry(
+                fingerprintId: fingerprintId,
+                latitude: _currentPosition!.latitude,
+                longitude: _currentPosition!.longitude,
+                zoneLabel: _environmentTypeLabel(),
+                cellTowers: freshBts.allCells,
+                createdAt: DateTime.now(),
+                deviceId: 'user-device',
+              ),
+            );
+            debugPrint('✓ Fresh BTS fingerprint saved: ${freshBts.allCells.length} cells');
+          } else {
+            debugPrint('⚠ Fresh BTS is also empty');
+          }
+        } catch (e) {
+          debugPrint('❌ Error getting fresh BTS: $e');
+        }
       }
 
       // ذخیره GPS در location_history (اگر GPS موجود باشد)
+      debugPrint('Checking GPS: _lastGpsPosition=${_lastGpsPosition != null}');
       if (_lastGpsPosition != null) {
         await _database.insertLocationHistory(
           LocationHistoryEntry(
@@ -287,7 +327,30 @@ class _SinglePageLocalizationScreenState
             timestamp: DateTime.now(),
           ),
         );
-        debugPrint('GPS position saved: ${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}');
+        debugPrint('✓ GPS position saved: ${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}');
+      } else {
+        debugPrint('⚠ GPS not saved: _lastGpsPosition is null, trying to get fresh GPS...');
+        // تلاش برای دریافت GPS مستقیم
+        try {
+          final freshGps = await LocationService.getCurrentPosition();
+          if (freshGps != null) {
+            await _database.insertLocationHistory(
+              LocationHistoryEntry(
+                deviceId: 'user-device',
+                latitude: freshGps.latitude,
+                longitude: freshGps.longitude,
+                zoneLabel: 'GPS',
+                confidence: 1.0,
+                timestamp: DateTime.now(),
+              ),
+            );
+            debugPrint('✓ Fresh GPS position saved: ${freshGps.latitude}, ${freshGps.longitude}');
+          } else {
+            debugPrint('⚠ Fresh GPS is also null');
+          }
+        } catch (e) {
+          debugPrint('❌ Error getting fresh GPS: $e');
+        }
       }
 
       if (mounted) {
@@ -300,6 +363,7 @@ class _SinglePageLocalizationScreenState
         );
       }
     } catch (e) {
+      debugPrint('❌ Error in _savePosition: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
