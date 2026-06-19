@@ -408,6 +408,59 @@ class AutoCsvService {
     await initialize();
   }
 
+  // ===== دانلود و اشتراک‌گذاری =====
+
+  /// ذخیره فایل WiFi CSV در فولدر Download گوشی و بازکردن آن
+  static Future<String?> saveWifiCsvToDownloadsAndOpen({String fileName = 'wifi_scans.csv'}) async {
+    if (_wifiCsvFile == null) await initialize();
+    if (_wifiCsvFile == null) return null;
+    final csvContent = await _wifiCsvFile!.readAsString();
+
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final outFile = File('${directory.path}/$fileName');
+      await outFile.writeAsString(csvContent, flush: true);
+      debugPrint('WiFi CSV saved to app documents: ${outFile.path}');
+
+      try {
+        await OpenFile.open(outFile.path);
+      } catch (_) {}
+
+      return outFile.path;
+    } catch (e) {
+      debugPrint('Error saving WiFi CSV to downloads: $e');
+      return null;
+    }
+  }
+
+  /// ذخیره فایل GPS/BTS CSV در فولدر Download گوشی و بازکردن آن
+  static Future<String?> saveGpsBtsCsvToDownloadsAndOpen({String fileName = 'gps_bts_scans.csv'}) async {
+    if (_gpsCsvFile == null) await initialize();
+    if (_gpsCsvFile == null) return null;
+    final csvContent = await _gpsCsvFile!.readAsString();
+
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final outFile = File('${directory.path}/$fileName');
+      await outFile.writeAsString(csvContent, flush: true);
+      debugPrint('GPS/BTS CSV saved to app documents: ${outFile.path}');
+
+      try {
+        await OpenFile.open(outFile.path);
+      } catch (_) {}
+
+      return outFile.path;
+    } catch (e) {
+      debugPrint('Error saving GPS/BTS CSV to downloads: $e');
+      return null;
+    }
+  }
+
+  /// ذخیره فایل CSV فعلی در فولدر Download گوشی و بازکردن آن (برای سازگاری با قدیم - WiFi را برمی‌گرداند)
+  static Future<String?> saveCsvToDownloadsAndOpen({String fileName = 'wifi_knn_auto.csv'}) async {
+    return await saveWifiCsvToDownloadsAndOpen(fileName: fileName);
+  }
+
   /// افزودن اسکن به CSV (برای استفاده در Map Reference Point Picker)
   static Future<void> addScan({
     required WifiScanResult scanResult,
