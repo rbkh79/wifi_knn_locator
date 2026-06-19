@@ -2492,9 +2492,9 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _exportData,
-                    icon: const Icon(Icons.download),
-                    label: const Text('Export تمام داده‌ها (CSV)'),
+                    onPressed: _downloadBtsData,
+                    icon: const Icon(Icons.cell_tower),
+                    label: const Text('دانلود داده‌های BTS'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.purple.shade700,
                       foregroundColor: Colors.white,
@@ -2506,11 +2506,25 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _exportDataJson,
-                    icon: const Icon(Icons.code),
-                    label: const Text('Export تمام داده‌ها (JSON)'),
+                    onPressed: _downloadGpsData,
+                    icon: const Icon(Icons.location_on),
+                    label: const Text('دانلود داده‌های GPS'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple.shade600,
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _downloadWifiData,
+                    icon: const Icon(Icons.wifi),
+                    label: const Text('دانلود داده‌های WiFi'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -2713,17 +2727,17 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _exportData() async {
+  Future<void> _downloadBtsData() async {
     try {
       setState(() => _loading = true);
-      // دانلود و اشتراک‌گذاری فایل CSV
-      await _dataExportService.downloadAndShareCsv();
-      if (mounted) {
+      await AutoCsvService.initialize();
+      final savedPath = await AutoCsvService.saveGpsBtsCsvToDownloadsAndOpen(fileName: 'bts_scans.csv');
+      if (savedPath != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فایل CSV آماده دانلود است! لطفاً از منوی اشتراک‌گذاری استفاده کنید.'),
+          SnackBar(
+            content: Text('✓ فایل BTS CSV در Downloads ذخیره شد:\n$savedPath'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -2731,7 +2745,63 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطا در Export: $e'),
+            content: Text('خطا در دانلود BTS: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _downloadGpsData() async {
+    try {
+      setState(() => _loading = true);
+      await AutoCsvService.initialize();
+      final savedPath = await AutoCsvService.saveGpsBtsCsvToDownloadsAndOpen(fileName: 'gps_scans.csv');
+      if (savedPath != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ فایل GPS CSV در Downloads ذخیره شد:\n$savedPath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود GPS: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _downloadWifiData() async {
+    try {
+      setState(() => _loading = true);
+      await AutoCsvService.initialize();
+      final savedPath = await AutoCsvService.saveWifiCsvToDownloadsAndOpen(fileName: 'wifi_scans.csv');
+      if (savedPath != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ فایل WiFi CSV در Downloads ذخیره شد:\n$savedPath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود WiFi: $e'),
             backgroundColor: Colors.red,
           ),
         );
