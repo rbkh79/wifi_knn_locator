@@ -186,6 +186,21 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                // دکمه ذخیره BTS + GPS در CSV
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onSave,
+                    icon: const Icon(Icons.save_alt, size: 18),
+                    label: const Text('ذخیره BTS + GPS در CSV'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.green.shade700,
+                      side: BorderSide(color: Colors.green.shade300),
+                      minimumSize: const Size.fromHeight(40),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 // دکمه دانلود CSV
                 SizedBox(
                   width: double.infinity,

@@ -87,6 +87,9 @@ class _SinglePageLocalizationScreenState
     // آپدیت اطلاعات اپراتور و باتری
     _updateOperatorInfo();
     _updateBatteryInfo();
+
+    // مقداردهی اولیه سرویس CSV خودکار
+    AutoCsvService.initialize();
   }
 
   @override
@@ -158,10 +161,8 @@ class _SinglePageLocalizationScreenState
     setState(() {
       _isScanning = true;
       _scanState = ScanState.scanning;
-      // پاک کردن داده‌های قبلی
-      _lastWifiScan = null;
-      _lastCellScan = null;
-      _lastGpsPosition = null;
+      // داده‌های قبلی را نگه می‌داریم تا در صورت خطا از دست نروند
+      // بعد از موفقیت اسکن، داده‌های جدید جایگزین می‌شوند
     });
 
     final sw = Stopwatch()..start();
@@ -268,9 +269,9 @@ class _SinglePageLocalizationScreenState
     debugPrint('_lastCellScan: ${_lastCellScan != null ? "exists (${_lastCellScan!.allCells.length} cells)" : "null"}');
     debugPrint('_lastGpsPosition: ${_lastGpsPosition != null ? "${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}" : "null"}');
 
-    // اگر هیچ داده‌ای برای ذخیره وجود ندارد، ابتدا GPS و BTS را دریافت کن
-    if (_currentPosition == null && _lastWifiScan == null && _lastCellScan == null && _lastGpsPosition == null) {
-      debugPrint('هیچ داده‌ای موجود نیست - دریافت GPS و BTS...');
+    // اگر BTS یا GPS موجود نیست، حتماً دریافت کن (برای ذخیره در CSV)
+    if (_lastCellScan == null || _lastGpsPosition == null) {
+      debugPrint('BTS یا GPS موجود نیست - دریافت داده‌های تازه...');
       setState(() => _isScanning = true);
       try {
         final results = await Future.wait([
@@ -281,8 +282,8 @@ class _SinglePageLocalizationScreenState
         final cellResult = results[1] as CellScanResult;
         
         setState(() {
-          _lastGpsPosition = gpsPos;
-          _lastCellScan = cellResult;
+          if (gpsPos != null) _lastGpsPosition = gpsPos;
+          if (cellResult.allCells.isNotEmpty) _lastCellScan = cellResult;
         });
         debugPrint('✓ GPS تازه: ${gpsPos != null ? "${gpsPos.latitude}, ${gpsPos.longitude}" : "null"}');
         debugPrint('✓ BTS تازه: ${cellResult.allCells.length} cells');
