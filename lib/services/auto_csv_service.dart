@@ -7,14 +7,22 @@ import 'package:geolocator/geolocator.dart';
 import '../data_model.dart';
 import 'package:open_file/open_file.dart';
 
-/// سرویس ذخیره خودکار CSV در هر اسکن Wi-Fi و BTS
+/// سرویس ذخیره خودکار CSV در هر اسکن Wi-Fi و BTS و GPS
+///
+/// داده‌ها در سه فایل جداگانه ذخیره می‌شوند:
+/// 1. wifi_scans_auto.csv - فقط داده‌های WiFi
+/// 2. gps_scans_auto.csv - فقط داده‌های GPS
+/// 3. bts_scans_auto.csv - فقط داده‌های BTS
 class AutoCsvService {
   static const String _wifiCsvFileName = 'wifi_scans_auto.csv';
-  static const String _gpsBtsCsvFileName = 'gps_bts_scans_auto.csv';
+  static const String _gpsCsvFileName = 'gps_scans_auto.csv';
+  static const String _btsCsvFileName = 'bts_scans_auto.csv';
   static File? _wifiCsvFile;
-  static File? _gpsBtsCsvFile;
+  static File? _gpsCsvFile;
+  static File? _btsCsvFile;
   static bool _wifiHeaderWritten = false;
-  static bool _gpsBtsHeaderWritten = false;
+  static bool _gpsHeaderWritten = false;
+  static bool _btsHeaderWritten = false;
 
   /// مقداردهی اولیه فایل‌های CSV
   static Future<void> initialize() async {
@@ -32,18 +40,29 @@ class AutoCsvService {
         _wifiHeaderWritten = true;
       }
 
-      // GPS/BTS CSV
-      final gpsBtsFilePath = '${directory.path}/$_gpsBtsCsvFileName';
-      _gpsBtsCsvFile = File(gpsBtsFilePath);
-      if (await _gpsBtsCsvFile!.exists()) {
-        final content = await _gpsBtsCsvFile!.readAsString();
-        _gpsBtsHeaderWritten = content.isNotEmpty && content.contains('Timestamp');
+      // GPS CSV (جدید - جدا از BTS)
+      final gpsFilePath = '${directory.path}/$_gpsCsvFileName';
+      _gpsCsvFile = File(gpsFilePath);
+      if (await _gpsCsvFile!.exists()) {
+        final content = await _gpsCsvFile!.readAsString();
+        _gpsHeaderWritten = content.isNotEmpty && content.contains('Timestamp');
       } else {
-        await _writeGpsBtsHeader();
-        _gpsBtsHeaderWritten = true;
+        await _writeGpsHeader();
+        _gpsHeaderWritten = true;
       }
 
-      debugPrint('AutoCsvService initialized: WiFi=$wifiFilePath, GPS/BTS=$gpsBtsFilePath');
+      // BTS CSV (جدید - جدا از GPS)
+      final btsFilePath = '${directory.path}/$_btsCsvFileName';
+      _btsCsvFile = File(btsFilePath);
+      if (await _btsCsvFile!.exists()) {
+        final content = await _btsCsvFile!.readAsString();
+        _btsHeaderWritten = content.isNotEmpty && content.contains('Timestamp');
+      } else {
+        await _writeBtsHeader();
+        _btsHeaderWritten = true;
+      }
+
+      debugPrint('AutoCsvService initialized: WiFi=$wifiFilePath, GPS=$gpsFilePath, BTS=$btsFilePath');
     } catch (e) {
       debugPrint('Error initializing auto CSV service: $e');
     }
@@ -75,9 +94,9 @@ class AutoCsvService {
     debugPrint('WiFi CSV header written');
   }
 
-  /// نوشتن header در فایل GPS/BTS CSV
-  static Future<void> _writeGpsBtsHeader() async {
-    if (_gpsBtsCsvFile == null) return;
+  /// نوشتن header در فایل GPS CSV (جداگانه)
+  static Future<void> _writeGpsHeader() async {
+    if (_gpsCsvFile == null) return;
 
     final header = [
       'Timestamp',
@@ -87,7 +106,30 @@ class AutoCsvService {
       // GPS
       'GPS Latitude',
       'GPS Longitude',
+      'GPS Altitude (m)',
       'GPS Accuracy (m)',
+      'GPS Speed (m/s)',
+      'GPS Bearing',
+    ];
+
+    final csvString = const ListToCsvConverter().convert([header]);
+    await _gpsCsvFile!.writeAsString(csvString, mode: FileMode.write);
+    debugPrint('GPS CSV header written');
+  }
+
+  /// نوشتن header در فایل BTS CSV (جداگانه)
+  static Future<void> _writeBtsHeader() async {
+    if (_btsCsvFile == null) return;
+
+    final header = [
+      'Timestamp',
+      'Date',
+      'Time',
+      'Device ID (Hashed MAC)',
+      // مختصات مرجع (از KNN یا GPS)
+      'Reference Latitude',
+      'Reference Longitude',
+      'Reference Zone',
       // BTS
       'BTS Cell ID',
       'BTS LAC',
@@ -97,15 +139,17 @@ class AutoCsvService {
       'BTS Signal (dBm)',
       'BTS Network Type',
       'BTS PCI',
+      'BTS PSC',
+      'BTS EARFCN',
       'BTS Serving',
     ];
 
     final csvString = const ListToCsvConverter().convert([header]);
-    await _gpsBtsCsvFile!.writeAsString(csvString, mode: FileMode.write);
-    debugPrint('GPS/BTS CSV header written');
+    await _btsCsvFile!.writeAsString(csvString, mode: FileMode.write);
+    debugPrint('BTS CSV header written');
   }
 
-  /// ذخیره خودکار یک اسکن Wi-Fi + BTS در دو فایل CSV جداگانه
+  /// ذخیره خودکار یک اسکن Wi-Fi + BTS + GPS در سه فایل CSV جداگانه
   static Future<void> saveScanToCsv({
     required WifiScanResult scanResult,
     CellScanResult? cellScanResult,
@@ -120,7 +164,7 @@ class AutoCsvService {
   }) async {
     try {
       // اطمینان از اینکه فایل‌های CSV آماده هستند
-      if (_wifiCsvFile == null || _gpsBtsCsvFile == null) {
+      if (_wifiCsvFile == null || _gpsCsvFile == null || _btsCsvFile == null) {
         await initialize();
       }
 
@@ -129,9 +173,13 @@ class AutoCsvService {
       final time = '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}';
       final deviceId = scanResult.deviceId;
 
-      // ===== ذخیره WiFi در wifi_scans_auto.csv =====
+      // مختصات مرجع (اولویت با KNN، سپس GPS، سپس پارامترهای ورودی)
+      final refLat = knnEstimate?.latitude ?? gpsPosition?.latitude ?? referenceLatitude ?? 0.0;
+      final refLon = knnEstimate?.longitude ?? gpsPosition?.longitude ?? referenceLongitude ?? 0.0;
+      final refZone = referenceZone ?? knnEstimate?.zoneLabel ?? '';
+
+      // ===== 1. ذخیره WiFi در wifi_scans_auto.csv =====
       if (_wifiCsvFile != null) {
-        // ستون‌های WiFi
         final wifiPrefix = [
           timestamp.toIso8601String(),
           date,
@@ -149,7 +197,7 @@ class AutoCsvService {
             ap.bssid,
             ap.rssi,
             ap.frequency ?? '',
-            referenceZone ?? ap.ssid ?? '',
+            ap.ssid ?? '',
           ];
           final csvString = const ListToCsvConverter().convert([row]);
           await _wifiCsvFile!.writeAsString('\n$csvString', mode: FileMode.append);
@@ -157,55 +205,65 @@ class AutoCsvService {
         debugPrint('✓ WiFi CSV saved: ${scanResult.accessPoints.length} APs');
       }
 
-      // ===== ذخیره GPS و BTS در gps_bts_scans_auto.csv =====
-      if (_gpsBtsCsvFile != null) {
-        // ستون‌های GPS/BTS
-        final gpsBtsPrefix = [
+      // ===== 2. ذخیره GPS در gps_scans_auto.csv (جداگانه) =====
+      if (_gpsCsvFile != null && gpsPosition != null) {
+        final row = [
           timestamp.toIso8601String(),
           date,
           time,
           deviceId,
-          gpsPosition?.latitude ?? 'ERROR',
-          gpsPosition?.longitude ?? 'ERROR',
-          gpsPosition?.accuracy ?? 'ERROR',
+          gpsPosition.latitude,
+          gpsPosition.longitude,
+          gpsPosition.altitude ?? '',
+          gpsPosition.accuracy ?? '',
+          gpsPosition.speed ?? '',
+          gpsPosition.heading ?? '',
+        ];
+        final csvString = const ListToCsvConverter().convert([row]);
+        await _gpsCsvFile!.writeAsString('\n$csvString', mode: FileMode.append);
+        debugPrint('✓ GPS CSV saved: ${gpsPosition.latitude}, ${gpsPosition.longitude}');
+      }
+
+      // ===== 3. ذخیره BTS در bts_scans_auto.csv (جداگانه) =====
+      if (_btsCsvFile != null && cellScanResult != null && cellScanResult.allCells.isNotEmpty) {
+        final btsPrefix = [
+          timestamp.toIso8601String(),
+          date,
+          time,
+          deviceId,
+          refLat,
+          refLon,
+          refZone,
         ];
 
-        // ردیف‌های BTS
-        if (cellScanResult != null && cellScanResult.allCells.isNotEmpty) {
-          for (final cell in cellScanResult.allCells) {
-            final isServing = cellScanResult.servingCell != null &&
-                cell.uniqueId == cellScanResult.servingCell!.uniqueId;
-            final row = [
-              ...gpsBtsPrefix,
-              cell.cellId ?? '',
-              cell.lac ?? '',
-              cell.tac ?? '',
-              cell.mcc ?? '',
-              cell.mnc ?? '',
-              cell.signalStrength ?? '',
-              cell.networkType ?? '',
-              cell.pci ?? '',
-              isServing ? 'true' : 'false',
-            ];
-            final csvString = const ListToCsvConverter().convert([row]);
-            await _gpsBtsCsvFile!.writeAsString('\n$csvString', mode: FileMode.append);
-          }
-          debugPrint('✓ GPS/BTS CSV saved: ${cellScanResult.allCells.length} cells, GPS=${gpsPosition != null}');
-        } else {
-          // اگر BTS خالی باشد، فقط GPS را ذخیره کن
+        for (final cell in cellScanResult.allCells) {
+          final isServing = cellScanResult.servingCell != null &&
+              cell.uniqueId == cellScanResult.servingCell!.uniqueId;
           final row = [
-            ...gpsBtsPrefix,
-            '', '', '', '', '', '', '', '', '', // BTS columns empty
+            ...btsPrefix,
+            cell.cellId ?? '',
+            cell.lac ?? '',
+            cell.tac ?? '',
+            cell.mcc ?? '',
+            cell.mnc ?? '',
+            cell.signalStrength ?? '',
+            cell.networkType ?? '',
+            cell.pci ?? '',
+            cell.psc ?? '',
+            cell.earfcn ?? '',
+            isServing ? 'true' : 'false',
           ];
           final csvString = const ListToCsvConverter().convert([row]);
-          await _gpsBtsCsvFile!.writeAsString('\n$csvString', mode: FileMode.append);
-          debugPrint('✓ GPS/BTS CSV saved: GPS only (BTS empty)');
+          await _btsCsvFile!.writeAsString('\n$csvString', mode: FileMode.append);
         }
+        debugPrint('✓ BTS CSV saved: ${cellScanResult.allCells.length} cells');
       }
     } catch (e) {
       debugPrint('❌ Error saving scan to CSV: $e');
     }
   }
+
+  // ===== مسیر فایل‌ها =====
 
   /// دریافت مسیر فایل WiFi CSV
   static Future<String?> getWifiCsvFilePath() async {
@@ -215,18 +273,28 @@ class AutoCsvService {
     return _wifiCsvFile?.path;
   }
 
-  /// دریافت مسیر فایل GPS/BTS CSV
-  static Future<String?> getGpsBtsCsvFilePath() async {
-    if (_gpsBtsCsvFile == null) {
+  /// دریافت مسیر فایل GPS CSV
+  static Future<String?> getGpsCsvFilePath() async {
+    if (_gpsCsvFile == null) {
       await initialize();
     }
-    return _gpsBtsCsvFile?.path;
+    return _gpsCsvFile?.path;
+  }
+
+  /// دریافت مسیر فایل BTS CSV
+  static Future<String?> getBtsCsvFilePath() async {
+    if (_btsCsvFile == null) {
+      await initialize();
+    }
+    return _btsCsvFile?.path;
   }
 
   /// دریافت مسیر فایل CSV (برای سازگاری با قدیم - WiFi را برمی‌گرداند)
   static Future<String?> getCsvFilePath() async {
     return await getWifiCsvFilePath();
   }
+
+  // ===== اندازه فایل‌ها =====
 
   /// دریافت اندازه فایل WiFi CSV (به بایت)
   static Future<int?> getWifiCsvFileSize() async {
@@ -239,13 +307,24 @@ class AutoCsvService {
     return null;
   }
 
-  /// دریافت اندازه فایل GPS/BTS CSV (به بایت)
-  static Future<int?> getGpsBtsCsvFileSize() async {
-    if (_gpsBtsCsvFile == null) {
+  /// دریافت اندازه فایل GPS CSV (به بایت)
+  static Future<int?> getGpsCsvFileSize() async {
+    if (_gpsCsvFile == null) {
       await initialize();
     }
-    if (_gpsBtsCsvFile != null && await _gpsBtsCsvFile!.exists()) {
-      return await _gpsBtsCsvFile!.length();
+    if (_gpsCsvFile != null && await _gpsCsvFile!.exists()) {
+      return await _gpsCsvFile!.length();
+    }
+    return null;
+  }
+
+  /// دریافت اندازه فایل BTS CSV (به بایت)
+  static Future<int?> getBtsCsvFileSize() async {
+    if (_btsCsvFile == null) {
+      await initialize();
+    }
+    if (_btsCsvFile != null && await _btsCsvFile!.exists()) {
+      return await _btsCsvFile!.length();
     }
     return null;
   }
@@ -254,6 +333,8 @@ class AutoCsvService {
   static Future<int?> getCsvFileSize() async {
     return await getWifiCsvFileSize();
   }
+
+  // ===== تعداد ردیف‌ها =====
 
   /// دریافت تعداد ردیف‌های WiFi CSV (بدون header)
   static Future<int> getWifiCsvRowCount() async {
@@ -271,18 +352,34 @@ class AutoCsvService {
     }
   }
 
-  /// دریافت تعداد ردیف‌های GPS/BTS CSV (بدون header)
-  static Future<int> getGpsBtsCsvRowCount() async {
-    if (_gpsBtsCsvFile == null || !await _gpsBtsCsvFile!.exists()) {
+  /// دریافت تعداد ردیف‌های GPS CSV (بدون header)
+  static Future<int> getGpsCsvRowCount() async {
+    if (_gpsCsvFile == null || !await _gpsCsvFile!.exists()) {
       return 0;
     }
 
     try {
-      final content = await _gpsBtsCsvFile!.readAsString();
+      final content = await _gpsCsvFile!.readAsString();
       final lines = content.split('\n');
       return math.max(0, lines.length - 2);
     } catch (e) {
-      debugPrint('Error counting GPS/BTS CSV rows: $e');
+      debugPrint('Error counting GPS CSV rows: $e');
+      return 0;
+    }
+  }
+
+  /// دریافت تعداد ردیف‌های BTS CSV (بدون header)
+  static Future<int> getBtsCsvRowCount() async {
+    if (_btsCsvFile == null || !await _btsCsvFile!.exists()) {
+      return 0;
+    }
+
+    try {
+      final content = await _btsCsvFile!.readAsString();
+      final lines = content.split('\n');
+      return math.max(0, lines.length - 2);
+    } catch (e) {
+      debugPrint('Error counting BTS CSV rows: $e');
       return 0;
     }
   }
@@ -292,16 +389,22 @@ class AutoCsvService {
     return await getWifiCsvRowCount();
   }
 
+  // ===== پاک کردن =====
+
   /// پاک کردن فایل‌های CSV (در صورت نیاز)
   static Future<void> clearCsv() async {
     if (_wifiCsvFile != null && await _wifiCsvFile!.exists()) {
       await _wifiCsvFile!.delete();
     }
-    if (_gpsBtsCsvFile != null && await _gpsBtsCsvFile!.exists()) {
-      await _gpsBtsCsvFile!.delete();
+    if (_gpsCsvFile != null && await _gpsCsvFile!.exists()) {
+      await _gpsCsvFile!.delete();
+    }
+    if (_btsCsvFile != null && await _btsCsvFile!.exists()) {
+      await _btsCsvFile!.delete();
     }
     _wifiHeaderWritten = false;
-    _gpsBtsHeaderWritten = false;
+    _gpsHeaderWritten = false;
+    _btsHeaderWritten = false;
     await initialize();
   }
 
@@ -328,7 +431,9 @@ class AutoCsvService {
     );
   }
 
-  /// ذخیره فایل WiFi CSV در فولدر Download گوشی و بازکردن آن
+  // ===== ذخیره در فولدر Documents و باز کردن =====
+
+  /// ذخیره فایل WiFi CSV در فولدر Documents گوشی و بازکردن آن
   static Future<String?> saveWifiCsvToDownloadsAndOpen({String fileName = 'wifi_scans.csv'}) async {
     if (_wifiCsvFile == null) await initialize();
     if (_wifiCsvFile == null) return null;
@@ -351,17 +456,17 @@ class AutoCsvService {
     }
   }
 
-  /// ذخیره فایل GPS/BTS CSV در فولدر Download گوشی و بازکردن آن
-  static Future<String?> saveGpsBtsCsvToDownloadsAndOpen({String fileName = 'gps_bts_scans.csv'}) async {
-    if (_gpsBtsCsvFile == null) await initialize();
-    if (_gpsBtsCsvFile == null) return null;
-    final csvContent = await _gpsBtsCsvFile!.readAsString();
+  /// ذخیره فایل GPS CSV در فولدر Documents گوشی و بازکردن آن
+  static Future<String?> saveGpsCsvToDownloadsAndOpen({String fileName = 'gps_scans.csv'}) async {
+    if (_gpsCsvFile == null) await initialize();
+    if (_gpsCsvFile == null) return null;
+    final csvContent = await _gpsCsvFile!.readAsString();
 
     try {
       final directory = await getApplicationDocumentsDirectory();
       final outFile = File('${directory.path}/$fileName');
       await outFile.writeAsString(csvContent, flush: true);
-      debugPrint('GPS/BTS CSV saved to app documents: ${outFile.path}');
+      debugPrint('GPS CSV saved to app documents: ${outFile.path}');
 
       try {
         await OpenFile.open(outFile.path);
@@ -369,12 +474,35 @@ class AutoCsvService {
 
       return outFile.path;
     } catch (e) {
-      debugPrint('Error saving GPS/BTS CSV to downloads: $e');
+      debugPrint('Error saving GPS CSV to downloads: $e');
       return null;
     }
   }
 
-  /// ذخیره فایل CSV فعلی در فولدر Download گوشی و بازکردن آن (برای سازگاری با قدیم - WiFi را برمی‌گرداند)
+  /// ذخیره فایل BTS CSV در فولدر Documents گوشی و بازکردن آن
+  static Future<String?> saveBtsCsvToDownloadsAndOpen({String fileName = 'bts_scans.csv'}) async {
+    if (_btsCsvFile == null) await initialize();
+    if (_btsCsvFile == null) return null;
+    final csvContent = await _btsCsvFile!.readAsString();
+
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final outFile = File('${directory.path}/$fileName');
+      await outFile.writeAsString(csvContent, flush: true);
+      debugPrint('BTS CSV saved to app documents: ${outFile.path}');
+
+      try {
+        await OpenFile.open(outFile.path);
+      } catch (_) {}
+
+      return outFile.path;
+    } catch (e) {
+      debugPrint('Error saving BTS CSV to downloads: $e');
+      return null;
+    }
+  }
+
+  /// ذخیره فایل CSV فعلی در فولدر Documents گوشی و بازکردن آن (برای سازگاری با قدیم - WiFi را برمی‌گرداند)
   static Future<String?> saveCsvToDownloadsAndOpen({String fileName = 'wifi_knn_auto.csv'}) async {
     return await saveWifiCsvToDownloadsAndOpen(fileName: fileName);
   }
