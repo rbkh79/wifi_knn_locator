@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import '../config.dart';
 import '../wifi_scanner.dart';
 import '../cell_scanner.dart';
 import '../services/unified_localization_service.dart';
-import '../services/settings_service.dart';
 import '../services/auto_csv_service.dart';
 import '../services/location_service.dart';
 import '../data_model.dart';
@@ -14,7 +14,6 @@ import '../widgets/operator_status_header.dart';
 import '../widgets/position_map_widget.dart';
 import '../widgets/coordinate_panel.dart';
 import 'settings_screen.dart';
-import 'location_history_screen.dart';
 import 'location_history_screen.dart';
 
 /// صفحه اصلی واحد برای موقعیت‌یابی
@@ -78,7 +77,8 @@ class _SinglePageLocalizationScreenState
     _localizationService = UnifiedLocalizationService(_database);
     
     // بارگذاری حالت پژوهشی
-    SettingsService.getBool('research_mode').then((v) {
+    SharedPreferences.getInstance().then((prefs) {
+      final v = prefs.getBool('research_mode');
       setState(() {
         _researchMode = v ?? false;
       });
@@ -166,37 +166,52 @@ class _SinglePageLocalizationScreenState
     });
 
     final sw = Stopwatch()..start();
+    
+    // هر اسکن را جداگانه اجرا می‌کنیم تا خطای یکی باعث شکست بقیه نشود
+    // این برای گوشی‌های شیائومی (Poco X3 Pro) مهم است چون BTS ممکن است خطا بدهد
+    WifiScanResult? wifiResult;
+    CellScanResult? cellResult;
+    Position? gpsPosition;
+    
     try {
-      // اسکن Wi-Fi، BTS و GPS را موازی اجرا می‌کنیم (سریع‌تر)
-      debugPrint('=== شروع اسکن موازی ===');
-      final results = await Future.wait([
-        WifiScanner.performScan(),
-        CellScanner.performScan(),
-        LocationService.getCurrentPosition(),
-      ]);
-
-      final wifiResult = results[0] as WifiScanResult;
-      final cellResult = results[1] as CellScanResult;
-      final gpsPosition = results[2] as Position?;
-
+      debugPrint('=== شروع اسکن WiFi ===');
+      wifiResult = await WifiScanner.performScan();
       debugPrint('✓ WiFi: ${wifiResult.accessPoints.length} APs');
+    } catch (e) {
+      debugPrint('❌ WiFi scan error: $e');
+    }
+    
+    try {
+      debugPrint('=== شروع اسکن BTS ===');
+      cellResult = await CellScanner.performScan();
       debugPrint('✓ BTS: ${cellResult.allCells.length} cells');
+    } catch (e) {
+      debugPrint('❌ BTS scan error: $e');
+    }
+    
+    try {
+      debugPrint('=== شروع دریافت GPS ===');
+      gpsPosition = await LocationService.getCurrentPosition();
       debugPrint('✓ GPS: ${gpsPosition != null ? "${gpsPosition.latitude}, ${gpsPosition.longitude}" : "null"}');
+    } catch (e) {
+      debugPrint('❌ GPS error: $e');
+    }
 
-      // ذخیره برای استفاده در _savePosition
-      setState(() {
-        _lastWifiScan = wifiResult;
-        _lastCellScan = cellResult;
-        _lastGpsPosition = gpsPosition;
-      });
+    // ذخیره برای استفاده در _savePosition - حتی اگر بعضی null باشند
+    setState(() {
+      if (wifiResult != null) _lastWifiScan = wifiResult;
+      if (cellResult != null) _lastCellScan = cellResult;
+      if (gpsPosition != null) _lastGpsPosition = gpsPosition;
+    });
 
-      if (cellResult.allCells.isEmpty) {
-        debugPrint('⚠ BTS خالی است - ممکن است مجوز READ_PHONE_STATE نداشته باشید');
-      }
-      if (gpsPosition == null) {
-        debugPrint('⚠ GPS null است - ممکن است سرویس موقعیت غیرفعال باشد');
-      }
+    if (cellResult == null || cellResult.allCells.isEmpty) {
+      debugPrint('⚠ BTS خالی/خطا - ممکن است مجوز READ_PHONE_STATE نداشته باشید');
+    }
+    if (gpsPosition == null) {
+      debugPrint('⚠ GPS null - ممکن است سرویس موقعیت غیرفعال باشد');
+    }
 
+    try {
       // موقعیت‌یابی یکپارچه
       UnifiedLocalizationResult? localizationResult;
       try {
@@ -210,22 +225,11 @@ class _SinglePageLocalizationScreenState
 
       sw.stop();
       _scanLatencyMs = sw.elapsedMilliseconds;
-      _activeSignalCount = wifiResult.accessPoints.length + cellResult.allCells.length;
+      _activeSignalCount = (wifiResult?.accessPoints.length ?? 0) + (cellResult?.allCells.length ?? 0);
       if (localizationResult != null) {
         _kUsed = localizationResult.kUsed;
         _currentK = localizationResult.kUsed;
       }
-
-      // همیشه CSV را ذخیره کن - حتی اگر موقعیت‌یابی شکست خورد
-      await AutoCsvService.saveScanToCsv(
-        scanResult: wifiResult,
-        cellScanResult: cellResult,
-        gpsPosition: gpsPosition,
-        knnEstimate: localizationResult?.estimate,
-        isReliable: localizationResult?.isReliable,
-        isNewLocation: null,
-        gpsKnnDistance: null,
-      );
 
       setState(() {
         if (localizationResult != null && localizationResult.estimate != null && localizationResult.isReliable) {
@@ -233,7 +237,7 @@ class _SinglePageLocalizationScreenState
           _environmentType = _mapEnvironmentTypeFromEnum(localizationResult.environmentType);
           _trajectoryHistory.add(localizationResult.estimate!);
           _scanState = ScanState.success;
-        } else if (wifiResult.accessPoints.isNotEmpty || cellResult.allCells.isNotEmpty || gpsPosition != null) {
+        } else if ((wifiResult?.accessPoints.isNotEmpty ?? false) || (cellResult?.allCells.isNotEmpty ?? false) || gpsPosition != null) {
           // حتی اگر KNN شکست خورد، داده‌های خام را داریم
           _scanState = ScanState.success;
         } else {
@@ -254,6 +258,30 @@ class _SinglePageLocalizationScreenState
         );
       }
     } finally {
+      // ذخیره CSV حتی اگر اسکن با خطا مواجه شد
+      // این کار تضمین می‌کند که داده‌های BTS و GPS همیشه ذخیره شوند
+      try {
+        if (_lastWifiScan != null || _lastCellScan != null || _lastGpsPosition != null) {
+          final wifiScan = _lastWifiScan ?? WifiScanResult(
+            deviceId: 'user-device',
+            timestamp: DateTime.now(),
+            accessPoints: [],
+          );
+          await AutoCsvService.saveScanToCsv(
+            scanResult: wifiScan,
+            cellScanResult: _lastCellScan,
+            gpsPosition: _lastGpsPosition,
+            knnEstimate: _currentPosition,
+            isReliable: _currentPosition != null ? _currentPosition!.confidence >= AppConfig.confidenceThreshold : null,
+            isNewLocation: null,
+            gpsKnnDistance: null,
+          );
+          debugPrint('✓ CSV saved in finally block');
+        }
+      } catch (csvError) {
+        debugPrint('❌ CSV save in finally failed: $csvError');
+      }
+
       setState(() => _isScanning = false);
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
@@ -270,28 +298,42 @@ class _SinglePageLocalizationScreenState
     debugPrint('_lastGpsPosition: ${_lastGpsPosition != null ? "${_lastGpsPosition!.latitude}, ${_lastGpsPosition!.longitude}" : "null"}');
 
     // اگر BTS یا GPS موجود نیست، حتماً دریافت کن (برای ذخیره در CSV)
+    // هر کدام را جداگانه امتحان می‌کنیم تا خطای یکی باعث شکست دیگری نشود
     if (_lastCellScan == null || _lastGpsPosition == null) {
       debugPrint('BTS یا GPS موجود نیست - دریافت داده‌های تازه...');
       setState(() => _isScanning = true);
-      try {
-        final results = await Future.wait([
-          LocationService.getCurrentPosition(),
-          CellScanner.performScan(),
-        ]);
-        final gpsPos = results[0] as Position?;
-        final cellResult = results[1] as CellScanResult;
-        
-        setState(() {
-          if (gpsPos != null) _lastGpsPosition = gpsPos;
-          if (cellResult.allCells.isNotEmpty) _lastCellScan = cellResult;
-        });
-        debugPrint('✓ GPS تازه: ${gpsPos != null ? "${gpsPos.latitude}, ${gpsPos.longitude}" : "null"}');
-        debugPrint('✓ BTS تازه: ${cellResult.allCells.length} cells');
-      } catch (e) {
-        debugPrint('❌ خطا در دریافت داده: $e');
-      } finally {
-        setState(() => _isScanning = false);
+      
+      // دریافت GPS به صورت جداگانه
+      if (_lastGpsPosition == null) {
+        try {
+          debugPrint('دریافت GPS تازه...');
+          final gpsPos = await LocationService.getCurrentPosition();
+          if (gpsPos != null) {
+            setState(() => _lastGpsPosition = gpsPos);
+            debugPrint('✓ GPS تازه: ${gpsPos.latitude}, ${gpsPos.longitude}');
+          }
+        } catch (e) {
+          debugPrint('❌ GPS error: $e');
+        }
       }
+      
+      // دریافت BTS به صورت جداگانه
+      if (_lastCellScan == null) {
+        try {
+          debugPrint('دریافت BTS تازه...');
+          final cellResult = await CellScanner.performScan();
+          if (cellResult.allCells.isNotEmpty) {
+            setState(() => _lastCellScan = cellResult);
+            debugPrint('✓ BTS تازه: ${cellResult.allCells.length} cells');
+          } else {
+            debugPrint('⚠ BTS خالی - مجوز READ_PHONE_STATE را بررسی کنید');
+          }
+        } catch (e) {
+          debugPrint('❌ BTS error: $e');
+        }
+      }
+      
+      setState(() => _isScanning = false);
     }
 
     int savedCount = 0;
@@ -528,7 +570,9 @@ class _SinglePageLocalizationScreenState
               setState(() {
                 _researchMode = !_researchMode;
               });
-              SettingsService.setBool('research_mode', _researchMode);
+              SharedPreferences.getInstance().then((prefs) {
+                prefs.setBool('research_mode', _researchMode);
+              });
             },
             color: _researchMode ? Colors.amber : null,
           ),
