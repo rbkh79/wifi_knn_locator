@@ -200,37 +200,37 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                // دکمه دانلود WiFi CSV
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _downloadWifiCsv(context),
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('دانلود فایل CSV (WiFi)'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blue.shade700,
-                      side: BorderSide(color: Colors.blue.shade300),
-                      minimumSize: const Size.fromHeight(40),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // دکمه دانلود GPS/BTS CSV
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _downloadGpsBtsCsv(context),
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('دانلود فایل CSV (GPS + BTS)'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.orange.shade700,
-                      side: BorderSide(color: Colors.orange.shade300),
-                      minimumSize: const Size.fromHeight(40),
-                    ),
-                  ),
-                ),
               ],
+              const SizedBox(height: 8),
+              // دکمه دانلود WiFi CSV
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _downloadWifiCsv(context),
+                  icon: const Icon(Icons.download, size: 18),
+                  label: const Text('دانلود فایل CSV (WiFi)'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue.shade700,
+                    side: BorderSide(color: Colors.blue.shade300),
+                    minimumSize: const Size.fromHeight(40),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // دکمه دانلود GPS/BTS CSV
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _downloadGpsBtsCsv(context),
+                  icon: const Icon(Icons.download, size: 18),
+                  label: const Text('دانلود فایل CSV (GPS + BTS)'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange.shade700,
+                    side: BorderSide(color: Colors.orange.shade300),
+                    minimumSize: const Size.fromHeight(40),
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
 
               // دکمه‌های عملیاتی
