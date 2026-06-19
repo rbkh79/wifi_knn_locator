@@ -201,16 +201,31 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // دکمه دانلود CSV
+                // دکمه دانلود WiFi CSV
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: () => _downloadCsv(context),
+                    onPressed: () => _downloadWifiCsv(context),
                     icon: const Icon(Icons.download, size: 18),
-                    label: const Text('دانلود فایل CSV (WiFi + BTS + GPS)'),
+                    label: const Text('دانلود فایل CSV (WiFi)'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.blue.shade700,
                       side: BorderSide(color: Colors.blue.shade300),
+                      minimumSize: const Size.fromHeight(40),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // دکمه دانلود GPS/BTS CSV
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _downloadGpsBtsCsv(context),
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('دانلود فایل CSV (GPS + BTS)'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade700,
+                      side: BorderSide(color: Colors.orange.shade300),
                       minimumSize: const Size.fromHeight(40),
                     ),
                   ),
@@ -531,6 +546,156 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
     if (confidence >= 0.5) return Colors.blue;
     if (confidence >= 0.3) return Colors.orange;
     return Colors.red;
+  }
+
+  Future<void> _downloadWifiCsv(BuildContext context) async {
+    try {
+      await AutoCsvService.initialize();
+
+      final filePath = await AutoCsvService.getWifiCsvFilePath();
+      if (filePath == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل WiFi CSV یافت نشد. ابتدا اسکن کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل WiFi CSV خالی است. ابتدا اسکن کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      try {
+        final savedPath = await AutoCsvService.saveWifiCsvToDownloadsAndOpen();
+        if (savedPath != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ فایل WiFi CSV در Downloads ذخیره شد:\n$savedPath'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('saveWifiCsvToDownloadsAndOpen failed: $e');
+      }
+
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'WiFi Scan Data',
+        text: 'داده‌های اسکن WiFi',
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ فایل WiFi CSV آماده اشتراک‌گذاری شد'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error downloading WiFi CSV: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود WiFi CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadGpsBtsCsv(BuildContext context) async {
+    try {
+      await AutoCsvService.initialize();
+
+      final filePath = await AutoCsvService.getGpsBtsCsvFilePath();
+      if (filePath == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل GPS/BTS CSV یافت نشد. ابتدا اسکن کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('فایل GPS/BTS CSV خالی است. ابتدا اسکن کنید.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      try {
+        final savedPath = await AutoCsvService.saveGpsBtsCsvToDownloadsAndOpen();
+        if (savedPath != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ فایل GPS/BTS CSV در Downloads ذخیره شد:\n$savedPath'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('saveGpsBtsCsvToDownloadsAndOpen failed: $e');
+      }
+
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'GPS BTS Scan Data',
+        text: 'داده‌های اسکن GPS + BTS',
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ فایل GPS/BTS CSV آماده اشتراک‌گذاری شد'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error downloading GPS/BTS CSV: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود GPS/BTS CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _downloadCsv(BuildContext context) async {
