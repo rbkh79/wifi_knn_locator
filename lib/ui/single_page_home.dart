@@ -261,23 +261,21 @@ class _SinglePageLocalizationScreenState
       // ذخیره CSV حتی اگر اسکن با خطا مواجه شد
       // این کار تضمین می‌کند که داده‌های BTS و GPS همیشه ذخیره شوند
       try {
-        if (_lastWifiScan != null || _lastCellScan != null || _lastGpsPosition != null) {
-          final wifiScan = _lastWifiScan ?? WifiScanResult(
-            deviceId: 'user-device',
-            timestamp: DateTime.now(),
-            accessPoints: [],
-          );
-          await AutoCsvService.saveScanToCsv(
-            scanResult: wifiScan,
-            cellScanResult: _lastCellScan,
-            gpsPosition: _lastGpsPosition,
-            knnEstimate: _currentPosition,
-            isReliable: _currentPosition != null ? _currentPosition!.confidence >= AppConfig.confidenceThreshold : null,
-            isNewLocation: null,
-            gpsKnnDistance: null,
-          );
-          debugPrint('✓ CSV saved in finally block');
-        }
+        final wifiScan = _lastWifiScan ?? WifiScanResult(
+          deviceId: 'user-device',
+          timestamp: DateTime.now(),
+          accessPoints: [],
+        );
+        await AutoCsvService.saveScanToCsv(
+          scanResult: wifiScan,
+          cellScanResult: _lastCellScan,
+          gpsPosition: _lastGpsPosition,
+          knnEstimate: _currentPosition,
+          isReliable: _currentPosition != null ? _currentPosition!.confidence >= AppConfig.confidenceThreshold : null,
+          isNewLocation: null,
+          gpsKnnDistance: null,
+        );
+        debugPrint('✓ CSV saved in finally block (WiFi: ${wifiScan.accessPoints.length}, BTS: ${_lastCellScan?.allCells.length ?? 0}, GPS: ${_lastGpsPosition != null})');
       } catch (csvError) {
         debugPrint('❌ CSV save in finally failed: $csvError');
       }

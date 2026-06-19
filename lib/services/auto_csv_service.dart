@@ -123,9 +123,9 @@ class AutoCsvService {
         date,
         time,
         deviceId,
-        gpsPosition?.latitude ?? referenceLatitude ?? '',
-        gpsPosition?.longitude ?? referenceLongitude ?? '',
-        gpsPosition?.accuracy ?? '',
+        gpsPosition?.latitude ?? referenceLatitude ?? 'ERROR',
+        gpsPosition?.longitude ?? referenceLongitude ?? 'ERROR',
+        gpsPosition?.accuracy ?? 'ERROR',
         knnEstimate?.latitude ?? '',
         knnEstimate?.longitude ?? '',
         knnEstimate?.confidence ?? '',
@@ -185,6 +185,16 @@ class AutoCsvService {
           final csvString = const ListToCsvConverter().convert([row]);
           await _csvFile!.writeAsString(csvString, mode: FileMode.append);
         }
+      } else {
+        // اگر BTS null باشد، یک ردیف با مقادیر خطا ذخیره کن
+        final row = [
+          ...commonPrefix,
+          '', '', '', '', // WiFi columns empty
+          'ERROR', 'ERROR', 'ERROR', 'ERROR', 'ERROR', 'ERROR', 'ERROR', 'ERROR', 'false',
+        ];
+        final csvString = const ListToCsvConverter().convert([row]);
+        await _csvFile!.writeAsString(csvString, mode: FileMode.append);
+        debugPrint('⚠ BTS error row saved to CSV');
       }
 
       debugPrint('✓ CSV saved: ${scanResult.accessPoints.length} WiFi APs, ${cellScanResult?.allCells.length ?? 0} BTS cells, GPS=${gpsPosition != null}');
