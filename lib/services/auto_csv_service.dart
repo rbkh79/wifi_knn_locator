@@ -130,14 +130,14 @@ class AutoCsvService {
       'Reference Latitude',
       'Reference Longitude',
       'Reference Zone',
-      // BTS
+      // BTS - فیلدهای دقیق
       'BTS Cell ID',
       'BTS LAC',
       'BTS TAC',
       'BTS MCC',
       'BTS MNC',
-      'BTS Signal (dBm)',
-      'BTS Network Type',
+      'BTS Signal Strength (dBm)', // قدرت سیگنال - مهم‌ترین فیلد
+      'BTS Network Type (RAT)',
       'BTS PCI',
       'BTS PSC',
       'BTS EARFCN',
@@ -246,8 +246,8 @@ class AutoCsvService {
             cell.tac ?? '',
             cell.mcc ?? '',
             cell.mnc ?? '',
-            cell.signalStrength ?? '',
-            cell.networkType ?? '',
+            cell.signalStrength ?? '', // قدرت سیگنال - مهم‌ترین فیلد
+            cell.networkType ?? '', // RAT
             cell.pci ?? '',
             cell.psc ?? '',
             cell.earfcn ?? '',
@@ -452,6 +452,29 @@ class AutoCsvService {
       return outFile.path;
     } catch (e) {
       debugPrint('Error saving GPS/BTS CSV to downloads: $e');
+      return null;
+    }
+  }
+
+  /// ذخیره فایل BTS CSV در فولدر Download گوشی و بازکردن آن
+  static Future<String?> saveBtsCsvToDownloadsAndOpen({String fileName = 'bts_scans.csv'}) async {
+    if (_btsCsvFile == null) await initialize();
+    if (_btsCsvFile == null) return null;
+    final csvContent = await _btsCsvFile!.readAsString();
+
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final outFile = File('${directory.path}/$fileName');
+      await outFile.writeAsString(csvContent, flush: true);
+      debugPrint('BTS CSV saved to app documents: ${outFile.path}');
+
+      try {
+        await OpenFile.open(outFile.path);
+      } catch (_) {}
+
+      return outFile.path;
+    } catch (e) {
+      debugPrint('Error saving BTS CSV to downloads: $e');
       return null;
     }
   }

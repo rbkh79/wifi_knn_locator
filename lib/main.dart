@@ -2731,7 +2731,7 @@ class _HomePageState extends State<HomePage> {
     try {
       setState(() => _loading = true);
       await AutoCsvService.initialize();
-      final savedPath = await AutoCsvService.saveGpsBtsCsvToDownloadsAndOpen(fileName: 'bts_scans.csv');
+      final savedPath = await AutoCsvService.saveBtsCsvToDownloadsAndOpen(fileName: 'bts_scans.csv');
       if (savedPath != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
