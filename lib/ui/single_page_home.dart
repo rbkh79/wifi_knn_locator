@@ -199,9 +199,9 @@ class _SinglePageLocalizationScreenState
 
     // ذخیره برای استفاده در _savePosition - حتی اگر بعضی null باشند
     setState(() {
-      if (wifiResult != null) _lastWifiScan = wifiResult;
-      if (cellResult != null) _lastCellScan = cellResult;
-      if (gpsPosition != null) _lastGpsPosition = gpsPosition;
+      _lastWifiScan = wifiResult;
+      _lastCellScan = cellResult;
+      _lastGpsPosition = gpsPosition;
     });
 
     if (cellResult == null || cellResult.allCells.isEmpty) {
