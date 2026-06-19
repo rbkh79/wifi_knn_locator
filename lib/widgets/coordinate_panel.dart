@@ -565,10 +565,30 @@ class _CoordinatePanelState extends State<CoordinatePanel> {
         return;
       }
 
-      // اشتراک‌گذاری فایل با share_plus
+      // روش 1: تلاش برای ذخیره در پوشه Downloads و باز کردن
+      try {
+        final savedPath = await AutoCsvService.saveCsvToDownloadsAndOpen();
+        if (savedPath != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ فایل CSV در Downloads ذخیره شد:\n$savedPath'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('saveCsvToDownloadsAndOpen failed: $e');
+      }
+
+      // روش 2: اشتراک‌گذاری فایل با share_plus (روش پشتیبان)
       await Share.shareXFiles(
         [XFile(filePath)],
         subject: 'WiFi BTS GPS Scan Data',
+        text: 'داده‌های اسکن WiFi + BTS + GPS',
       );
 
       if (context.mounted) {

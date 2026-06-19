@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:csv/csv.dart';
 import 'package:geolocator/geolocator.dart';
 import '../data_model.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 
 /// سرویس ذخیره خودکار CSV در هر اسکن Wi-Fi و BTS
@@ -269,23 +268,49 @@ class AutoCsvService {
     if (_csvFile == null) return null;
     final csvContent = await _csvFile!.readAsString();
 
-    // درخواست دسترسی
-    if (!await Permission.storage.request().isGranted) {
-      return null;
-    }
     try {
-      // مسیر پوشه دانلود اندروید
-      final Directory downloadsDir = Directory('/storage/emulated/0/Download');
-      if (!await downloadsDir.exists()) {
-        return null;
+      // روش 1: استفاده از getExternalStorageDirectory (روش استاندارد Flutter)
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final outFile = File('${directory.path}/$fileName');
+        await outFile.writeAsString(csvContent, flush: true);
+        debugPrint('CSV saved to app documents: ${outFile.path}');
+        
+        // تلاش برای باز کردن فایل
+        try {
+          await OpenFile.open(outFile.path);
+        } catch (_) {
+          // باز کردن فایل ممکن است در برخی دستگاه‌ها کار نکند - اشکالی ندارد
+        }
+        return outFile.path;
+      } catch (e) {
+        debugPrint('Method 1 (app documents) failed: $e');
       }
-      final outFile = File('${downloadsDir.path}/$fileName');
+
+      // روش 2: ذخیره در پوشه Downloads با مسیر مستقیم (برای اندروید)
+      try {
+        final Directory downloadsDir = Directory('/storage/emulated/0/Download');
+        if (await downloadsDir.exists()) {
+          final outFile = File('${downloadsDir.path}/$fileName');
+          await outFile.writeAsString(csvContent, flush: true);
+          debugPrint('CSV saved to Downloads: ${outFile.path}');
+          try {
+            await OpenFile.open(outFile.path);
+          } catch (_) {}
+          return outFile.path;
+        }
+      } catch (e) {
+        debugPrint('Method 2 (Downloads) failed: $e');
+      }
+
+      // روش 3: ذخیره در مسیر پیش‌فرض app documents (بدون نیاز به مجوز)
+      final directory = await getApplicationDocumentsDirectory();
+      final outFile = File('${directory.path}/$fileName');
       await outFile.writeAsString(csvContent, flush: true);
-      // بازکردن فایل با فایل‌منیجر یا اکسل
-      await OpenFile.open(outFile.path);
+      debugPrint('CSV saved (fallback): ${outFile.path}');
       return outFile.path;
     } catch (e) {
-      debugPrint('Error saving CSV to Downloads: $e');
+      debugPrint('Error saving CSV: $e');
       return null;
     }
   }

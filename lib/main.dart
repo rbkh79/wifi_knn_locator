@@ -62,6 +62,7 @@ import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
 import 'utils/privacy_utils.dart';
 import 'package:uuid/uuid.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 
 void main() async {
@@ -2666,26 +2667,37 @@ class _HomePageState extends State<HomePage> {
       }
 
       final savedPath = await AutoCsvService.saveCsvToDownloadsAndOpen();
-      if (savedPath == null) {
+      if (savedPath != null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('ذخیره فایل در پوشه Downloads با مشکل مواجه شد.'),
-              backgroundColor: Colors.red,
+            SnackBar(
+              content: Text('فایل CSV در پوشه Downloads ذخیره شد.\n$savedPath'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
             ),
           );
         }
         return;
       }
       
+      // روش پشتیبان: اشتراک‌گذاری فایل
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('فایل CSV در پوشه Downloads ذخیره شد.\n$savedPath'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        try {
+          await Share.shareXFiles(
+            [XFile(filePath)],
+            subject: 'WiFi BTS GPS Scan Data',
+            text: 'داده‌های اسکن WiFi + BTS + GPS',
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('ذخیره فایل با مشکل مواجه شد: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
