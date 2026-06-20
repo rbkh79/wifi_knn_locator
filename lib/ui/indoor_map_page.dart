@@ -121,12 +121,15 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
   
   /// اسکن WiFi
   Future<WifiScanResult> _scanWifi() async {
-    final hasPermission = await wifi_scan.WifiScan().hasScanningPermission();
+    final hasPermission = await wifi_scan.WiFiScan.instance.hasScanningPermission();
     if (!hasPermission) {
-      await wifi_scan.WifiScan().requestScanningPermission();
+      await wifi_scan.WiFiScan.instance.requestScanningPermission();
     }
     
-    final accessPoints = await wifi_scan.WifiScan().scanResults();
+    await wifi_scan.WiFiScan.instance.startScan();
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    final accessPoints = await wifi_scan.WiFiScan.instance.getScannedResults();
     final deviceId = await _getDeviceId();
     
     return WifiScanResult(
