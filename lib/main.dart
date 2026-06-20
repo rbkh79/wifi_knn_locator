@@ -57,10 +57,12 @@ import 'services/map_reference_point_picker.dart';
 import 'services/unified_localization_service.dart';
 import 'services/trajectory_service.dart';
 import 'services/path_prediction_service.dart';
+import 'services/indoor_csv_manager.dart';
 import 'widgets/environment_indicator.dart';
 import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
 import 'utils/privacy_utils.dart';
+import 'ui/indoor_map_page.dart';
 import 'package:uuid/uuid.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -932,6 +934,17 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
+          // آیکون Indoor Mapping
+          IconButton(
+            icon: const Icon(Icons.back_hand),
+            tooltip: 'Indoor Mapping',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const IndoorMapPage()),
+              );
+            },
+          ),
           // نمایش شناسه دستگاه در AppBar
           if (_deviceId != null)
             Padding(
@@ -2534,6 +2547,34 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
+                    onPressed: _downloadOsmPoints,
+                    icon: const Icon(Icons.map),
+                    label: const Text('دانلود OSM Points'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _downloadFingerprints,
+                    icon: const Icon(Icons.fingerprint),
+                    label: const Text('دانلود Fingerprints'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -2833,6 +2874,62 @@ class _HomePageState extends State<HomePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('خطا در Export: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _downloadOsmPoints() async {
+    try {
+      setState(() => _loading = true);
+      await IndoorCsvManager.initialize();
+      final savedPath = await IndoorCsvManager.saveOsmPointsToDownloads(fileName: 'osm_points.csv');
+      if (savedPath != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ فایل OSM Points CSV در Downloads ذخیره شد:\n$savedPath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود OSM Points: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _downloadFingerprints() async {
+    try {
+      setState(() => _loading = true);
+      await IndoorCsvManager.initialize();
+      final savedPath = await IndoorCsvManager.saveFingerprintsToDownloads(fileName: 'fingerprints.csv');
+      if (savedPath != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ فایل Fingerprints CSV در Downloads ذخیره شد:\n$savedPath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطا در دانلود Fingerprints: $e'),
             backgroundColor: Colors.red,
           ),
         );
