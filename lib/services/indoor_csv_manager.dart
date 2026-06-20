@@ -1,6 +1,7 @@
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:async';
 
@@ -190,14 +191,14 @@ class IndoorCsvManager {
   }
   
   /// بارگذاری آمار
-  static Future<Map<String, int>> loadStatistics() async {
+  static Future<Map<String, dynamic>> loadStatistics() async {
     if (_fingerprintsFile == null) await initialize();
     
     try {
       final content = await _fingerprintsFile!.readAsString();
       final rows = const CsvToListConverter().convert(content);
       
-      if (rows.isEmpty) return {'totalReferencePoints': 0, 'totalSamples': 0, 'samplesPerReferencePoint': {}};
+      if (rows.isEmpty) return {'totalReferencePoints': 0, 'totalSamples': 0, 'samplesPerReferencePoint': <String, int>{}};
       
       // Skip header
       final dataRows = rows.skip(1);
@@ -218,7 +219,7 @@ class IndoorCsvManager {
       };
     } catch (e) {
       debugPrint('Error loading statistics: $e');
-      return {'totalReferencePoints': 0, 'totalSamples': 0, 'samplesPerReferencePoint': {}};
+      return {'totalReferencePoints': 0, 'totalSamples': 0, 'samplesPerReferencePoint': <String, int>{}};
     }
   }
   

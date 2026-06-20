@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wifi_scan/wifi_scan.dart';
+import 'package:wifi_scan/wifi_scan.dart' as wifi_scan;
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -84,9 +84,9 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
   Future<void> _loadStatistics() async {
     final stats = await IndoorCsvManager.loadStatistics();
     setState(() {
-      _totalReferencePoints = stats['totalReferencePoints'] ?? 0;
-      _totalSamples = stats['totalSamples'] ?? 0;
-      _samplesPerReferencePoint = stats['samplesPerReferencePoint'] ?? {};
+      _totalReferencePoints = stats['totalReferencePoints'] as int? ?? 0;
+      _totalSamples = stats['totalSamples'] as int? ?? 0;
+      _samplesPerReferencePoint = stats['samplesPerReferencePoint'] as Map<String, int>? ?? {};
     });
   }
   
@@ -121,12 +121,12 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
   
   /// اسکن WiFi
   Future<WifiScanResult> _scanWifi() async {
-    final hasPermission = await WifiScan().hasScanningPermission();
+    final hasPermission = await wifi_scan.WifiScan().hasScanningPermission();
     if (!hasPermission) {
-      await WifiScan().requestScanningPermission();
+      await wifi_scan.WifiScan().requestScanningPermission();
     }
     
-    final accessPoints = await WifiScan().scanResults();
+    final accessPoints = await wifi_scan.WifiScan().scanResults();
     final deviceId = await _getDeviceId();
     
     return WifiScanResult(
