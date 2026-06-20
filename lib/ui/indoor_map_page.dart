@@ -4,7 +4,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wifi_scan/wifi_scan.dart' as wifi_scan;
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -13,6 +12,7 @@ import 'package:uuid/uuid.dart';
 
 import '../services/indoor_csv_manager.dart';
 import '../cell_scanner.dart';
+import '../wifi_scanner.dart';
 import '../data_model.dart';
 
 /// صفحه Indoor Mapping برای انتخاب Ground Truth و جمع‌آوری Fingerprint
@@ -121,22 +121,7 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
   
   /// اسکن WiFi
   Future<WifiScanResult> _scanWifi() async {
-    final hasPermission = await wifi_scan.WiFiScan.instance.hasScanningPermission();
-    if (!hasPermission) {
-      await wifi_scan.WiFiScan.instance.requestScanningPermission();
-    }
-    
-    await wifi_scan.WiFiScan.instance.startScan();
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    final accessPoints = await wifi_scan.WiFiScan.instance.getScannedResults();
-    final deviceId = await _getDeviceId();
-    
-    return WifiScanResult(
-      timestamp: DateTime.now(),
-      deviceId: deviceId,
-      accessPoints: accessPoints,
-    );
+    return await WifiScanner.performScan();
   }
   
   /// اسکن BTS
