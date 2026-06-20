@@ -63,6 +63,7 @@ import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
 import 'utils/privacy_utils.dart';
 import 'ui/indoor_map_page.dart';
+import 'package:open_file/open_file.dart';
 import 'package:uuid/uuid.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -2889,6 +2890,11 @@ class _HomePageState extends State<HomePage> {
       await IndoorCsvManager.initialize();
       final savedPath = await IndoorCsvManager.saveOsmPointsToDownloads(fileName: 'osm_points.csv');
       if (savedPath != null && mounted) {
+        // باز کردن فایل
+        try {
+          await OpenFile.open(savedPath);
+        } catch (_) {}
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✓ فایل OSM Points CSV در Downloads ذخیره شد:\n$savedPath'),
@@ -2917,6 +2923,11 @@ class _HomePageState extends State<HomePage> {
       await IndoorCsvManager.initialize();
       final savedPath = await IndoorCsvManager.saveFingerprintsToDownloads(fileName: 'fingerprints.csv');
       if (savedPath != null && mounted) {
+        // باز کردن فایل
+        try {
+          await OpenFile.open(savedPath);
+        } catch (_) {}
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✓ فایل Fingerprints CSV در Downloads ذخیره شد:\n$savedPath'),
