@@ -324,11 +324,6 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
                   urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                   userAgentPackageName: 'com.example.wifi_knn_locator',
                 ),
-                TileLayer(
-                  urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-                  userAgentPackageName: 'com.example.wifi_knn_locator',
-                  opacity: 0.5,
-                ),
                 MarkerLayer(
                   markers: [
                     if (_selectedMarker != null) _selectedMarker!,
