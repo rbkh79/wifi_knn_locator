@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_geojson/flutter_map_geojson.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:uuid/uuid.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../services/indoor_csv_manager.dart';
 import '../cell_scanner.dart';
@@ -27,14 +29,21 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
   // Map Controller
   final MapController _mapController = MapController();
   
-  // موقعیت اولیه نقشه (دانشگاه فردوسی مشهد)
-  static const double _initialLatitude = 36.3345;
-  static const double _initialLongitude = 59.6395;
-  static const double _initialZoom = 18.0;
+  // موقعیت اولیه نقشه (دانشکده مهندسی دانشگاه فردوسی مشهد)
+  static const double _initialLatitude = 36.3124;
+  static const double _initialLongitude = 59.5265;
+  static const double _initialZoom = 19.0;
   
   // موقعیت انتخاب‌شده
   LatLng? _selectedLocation;
   Marker? _selectedMarker;
+  
+  // انتخاب طبقه
+  int _selectedLevel = 0;
+  final List<int> _availableLevels = [-1, 0, 1, 2, 3];
+  
+  // GeoJSON layer
+  GeoJsonParser? _geoJsonParser;
   
   // فیلدهای Ground Truth
   final TextEditingController _buildingController = TextEditingController();
@@ -61,6 +70,7 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
     super.initState();
     _loadSavedPoints();
     _loadStatistics();
+    _loadGeoJson();
   }
   
   @override
@@ -88,6 +98,28 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
       _totalSamples = stats['totalSamples'] as int? ?? 0;
       _samplesPerReferencePoint = stats['samplesPerReferencePoint'] as Map<String, int>? ?? {};
     });
+  }
+  
+  /// بارگذاری GeoJSON
+  Future<void> _loadGeoJson() async {
+    try {
+      final geoJsonString = await rootBundle.loadString('assets/indoor_maps/indoor_level_$_selectedLevel.geojson');
+      setState(() {
+        _geoJsonParser = GeoJsonParser(defaultColor: Colors.blue.withOpacity(0.3));
+        _geoJsonParser!.parseGeoJsonAsString(geoJsonString);
+      });
+    } catch (e) {
+      debugPrint('Error loading GeoJSON: $e');
+    }
+  }
+  
+  /// تغییر طبقه
+  void _changeLevel(int level) {
+    setState(() {
+      _selectedLevel = level;
+      _floorController.text = level.toString();
+    });
+    _loadGeoJson();
   }
   
   /// اسکن WiFi و BTS
@@ -324,6 +356,10 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
                   urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                   userAgentPackageName: 'com.example.wifi_knn_locator',
                 ),
+                if (_geoJsonParser != null)
+                  GeoJsonLayer(
+                    geoJsonParser: _geoJsonParser!,
+                  ),
                 MarkerLayer(
                   markers: [
                     if (_selectedMarker != null) _selectedMarker!,
@@ -368,6 +404,33 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // انتخاب طبقه
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('انتخاب طبقه:', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            children: _availableLevels.map((level) {
+                              return ElevatedButton(
+                                onPressed: () => _changeLevel(level),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _selectedLevel == level ? Colors.blue : Colors.grey,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: Text('طبقه $level'),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -383,6 +446,7 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
                       Expanded(
                         child: TextField(
                           controller: _floorController,
+                          readOnly: true,
                           decoration: const InputDecoration(
                             labelText: 'Floor',
                             border: OutlineInputBorder(),
