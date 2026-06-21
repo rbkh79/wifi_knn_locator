@@ -105,7 +105,7 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
     try {
       final geoJsonString = await rootBundle.loadString('assets/indoor_maps/indoor_level_$_selectedLevel.geojson');
       setState(() {
-        _geoJsonParser = GeoJsonParser(defaultColor: Colors.blue.withOpacity(0.3));
+        _geoJsonParser = GeoJsonParser();
         _geoJsonParser!.parseGeoJsonAsString(geoJsonString);
       });
     } catch (e) {
@@ -357,8 +357,15 @@ class _IndoorMapPageState extends State<IndoorMapPage> {
                   userAgentPackageName: 'com.example.wifi_knn_locator',
                 ),
                 if (_geoJsonParser != null)
-                  GeoJsonLayer(
-                    geoJsonParser: _geoJsonParser!,
+                  PolygonLayer(
+                    polygons: _geoJsonParser!.polygons.map((poly) {
+                      return Polygon(
+                        points: poly.points,
+                        color: Colors.blue.withOpacity(0.3),
+                        borderColor: Colors.blue,
+                        borderStrokeWidth: 2,
+                      );
+                    }).toList(),
                   ),
                 MarkerLayer(
                   markers: [
