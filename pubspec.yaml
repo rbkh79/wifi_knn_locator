@@ -27,7 +27,7 @@ dependencies:
   share_plus: ^10.1.2
   open_file: ^3.3.2
   image_picker: ^1.0.7
-  flutter_map_geojson: ^3.0.0
+  flutter_map_geojson: ^1.0.8
 
 dev_dependencies:
   flutter_test:
