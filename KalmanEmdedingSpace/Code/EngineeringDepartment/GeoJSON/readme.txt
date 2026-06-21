@@ -1,1 +1,0 @@
-created using JavaOpenStreetMap(JOSM)

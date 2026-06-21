@@ -1,3 +1,0 @@
-clean_images=27
-long_images=3
-rejected_images=0
