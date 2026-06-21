@@ -1,0 +1,223 @@
+{
+  "format": "hivt_like_npz_per_scene",
+  "history_steps": 20,
+  "future_steps": 30,
+  "dt_seconds": 1.0,
+  "radius_m": 35.0,
+  "scenes": [
+    {
+      "scene_id": 0,
+      "level": "-1",
+      "file": "scene_000_level_-1.npz",
+      "num_nodes": 2,
+      "num_lane_vectors": 1,
+      "num_lane_actor_edges": 0,
+      "routes": [
+        "L-1_R00_A",
+        "L-1_R00_B"
+      ]
+    },
+    {
+      "scene_id": 1,
+      "level": "0",
+      "file": "scene_001_level_0.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 15,
+      "num_lane_actor_edges": 14,
+      "routes": [
+        "L0_R00_A",
+        "L0_R00_B",
+        "L0_R01_A",
+        "L0_R01_B",
+        "L0_R02_A",
+        "L0_R02_B",
+        "L0_R03_A",
+        "L0_R03_B"
+      ]
+    },
+    {
+      "scene_id": 2,
+      "level": "0",
+      "file": "scene_002_level_0.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 15,
+      "num_lane_actor_edges": 24,
+      "routes": [
+        "L0_R04_A",
+        "L0_R04_B",
+        "L0_R05_A",
+        "L0_R05_B",
+        "L0_R06_A",
+        "L0_R06_B",
+        "L0_R07_A",
+        "L0_R07_B"
+      ]
+    },
+    {
+      "scene_id": 3,
+      "level": "0",
+      "file": "scene_003_level_0.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 15,
+      "num_lane_actor_edges": 21,
+      "routes": [
+        "L0_R08_A",
+        "L0_R08_B",
+        "L0_R09_A",
+        "L0_R09_B",
+        "L0_R10_A",
+        "L0_R10_B",
+        "L0_R11_A",
+        "L0_R11_B"
+      ]
+    },
+    {
+      "scene_id": 4,
+      "level": "0",
+      "file": "scene_004_level_0.npz",
+      "num_nodes": 4,
+      "num_lane_vectors": 15,
+      "num_lane_actor_edges": 8,
+      "routes": [
+        "L0_R12_A",
+        "L0_R12_B",
+        "L0_R13_A",
+        "L0_R13_B"
+      ]
+    },
+    {
+      "scene_id": 5,
+      "level": "1",
+      "file": "scene_005_level_1.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 13,
+      "num_lane_actor_edges": 11,
+      "routes": [
+        "L1_R00_A",
+        "L1_R00_B",
+        "L1_R01_A",
+        "L1_R01_B",
+        "L1_R02_A",
+        "L1_R02_B",
+        "L1_R03_A",
+        "L1_R03_B"
+      ]
+    },
+    {
+      "scene_id": 6,
+      "level": "1",
+      "file": "scene_006_level_1.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 13,
+      "num_lane_actor_edges": 17,
+      "routes": [
+        "L1_R04_A",
+        "L1_R04_B",
+        "L1_R05_A",
+        "L1_R05_B",
+        "L1_R06_A",
+        "L1_R06_B",
+        "L1_R07_A",
+        "L1_R07_B"
+      ]
+    },
+    {
+      "scene_id": 7,
+      "level": "1",
+      "file": "scene_007_level_1.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 13,
+      "num_lane_actor_edges": 14,
+      "routes": [
+        "L1_R08_A",
+        "L1_R08_B",
+        "L1_R09_A",
+        "L1_R09_B",
+        "L1_R10_A",
+        "L1_R10_B",
+        "L1_R11_A",
+        "L1_R11_B"
+      ]
+    },
+    {
+      "scene_id": 8,
+      "level": "1",
+      "file": "scene_008_level_1.npz",
+      "num_nodes": 2,
+      "num_lane_vectors": 13,
+      "num_lane_actor_edges": 4,
+      "routes": [
+        "L1_R12_A",
+        "L1_R12_B"
+      ]
+    },
+    {
+      "scene_id": 9,
+      "level": "2",
+      "file": "scene_009_level_2.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 12,
+      "num_lane_actor_edges": 9,
+      "routes": [
+        "L2_R00_A",
+        "L2_R00_B",
+        "L2_R01_A",
+        "L2_R01_B",
+        "L2_R02_A",
+        "L2_R02_B",
+        "L2_R03_A",
+        "L2_R03_B"
+      ]
+    },
+    {
+      "scene_id": 10,
+      "level": "2",
+      "file": "scene_010_level_2.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 12,
+      "num_lane_actor_edges": 18,
+      "routes": [
+        "L2_R04_A",
+        "L2_R04_B",
+        "L2_R05_A",
+        "L2_R05_B",
+        "L2_R06_A",
+        "L2_R06_B",
+        "L2_R07_A",
+        "L2_R07_B"
+      ]
+    },
+    {
+      "scene_id": 11,
+      "level": "2",
+      "file": "scene_011_level_2.npz",
+      "num_nodes": 8,
+      "num_lane_vectors": 12,
+      "num_lane_actor_edges": 16,
+      "routes": [
+        "L2_R08_A",
+        "L2_R08_B",
+        "L2_R09_A",
+        "L2_R09_B",
+        "L2_R10_A",
+        "L2_R10_B",
+        "L2_R11_A",
+        "L2_R11_B"
+      ]
+    },
+    {
+      "scene_id": 12,
+      "level": "2.5",
+      "file": "scene_012_level_2.5.npz",
+      "num_nodes": 4,
+      "num_lane_vectors": 2,
+      "num_lane_actor_edges": 4,
+      "routes": [
+        "L2.5_R00_A",
+        "L2.5_R00_B",
+        "L2.5_R01_A",
+        "L2.5_R01_B"
+      ]
+    }
+  ]
+}

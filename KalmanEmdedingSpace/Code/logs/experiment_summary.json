@@ -1,0 +1,19 @@
+{
+  "metrics": {
+    "snr_db": 5.0,
+    "noise_std": 2.3309653137864066,
+    "measurement_rmse": 2.1988317001865147,
+    "input_kf_rmse": 1.3986828308957604,
+    "embedding_corrected_kf_rmse": 1.2816274555118234,
+    "embedding_kf_rmse": 1.2816274555118234,
+    "history_len": 12,
+    "steps": 180
+  },
+  "notes": [
+    "Synthetic sinusoidal trajectory with SNR=5 dB",
+    "Input-space KF uses raw noisy positions",
+    "A second state-space KF uses embedding residual only for measurement correction",
+    "No direct trajectory tracking is performed in raw 64/128-d embedding space",
+    "HiVT is used if importable; otherwise frozen linear encoder is the fallback"
+  ]
+}

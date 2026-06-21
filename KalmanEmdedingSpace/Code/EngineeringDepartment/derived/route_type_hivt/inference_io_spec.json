@@ -1,0 +1,38 @@
+{
+  "input_to_predictor": {
+    "map": {
+      "source": "H:\\HadiEnv\\KalmanEmdedingSpace\\Code\\EngineeringDepartment\\GeoJSON",
+      "derived_lane_features": [
+        "lane_vectors",
+        "lane_actor_index",
+        "lane_actor_vectors"
+      ]
+    },
+    "trajectory_scene": {
+      "format": "npz",
+      "fields": [
+        "x",
+        "positions",
+        "y",
+        "num_nodes",
+        "padding_mask",
+        "bos_mask",
+        "rotate_angles",
+        "lane_vectors",
+        "lane_actor_index",
+        "lane_actor_vectors",
+        "agent_index",
+        "av_index"
+      ]
+    },
+    "command": "h:/HadiEnv/KalmanEmdedingSpace/Scripts/python.exe Code/EngineeringDepartment/run_hivt_route_types_maprich.py"
+  },
+  "output_from_predictor": {
+    "numeric": [
+      "H:\\HadiEnv\\KalmanEmdedingSpace\\Code\\EngineeringDepartment\\derived\\route_type_hivt\\route_types_master.csv",
+      "H:\\HadiEnv\\KalmanEmdedingSpace\\Code\\EngineeringDepartment\\derived\\route_type_hivt\\route_types_summary.json",
+      "H:\\HadiEnv\\KalmanEmdedingSpace\\Code\\EngineeringDepartment\\derived\\route_type_hivt\\predictions"
+    ],
+    "visual": "H:\\HadiEnv\\KalmanEmdedingSpace\\Code\\EngineeringDepartment\\derived\\route_type_hivt\\figures"
+  }
+}
