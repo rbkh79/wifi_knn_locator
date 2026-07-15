@@ -97,7 +97,7 @@ class OutdoorGpsBtsService {
         accuracy: LocationAccuracy.best,
         distanceFilter: 0,
         forceLocationManager: false,
-        intervalMillis: _gpsUpdateInterval.inMilliseconds,
+        interval: _gpsUpdateInterval.inMilliseconds,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationText: 'Recording GPS+BTS data for outdoor positioning',
           notificationTitle: 'Outdoor Recording',
