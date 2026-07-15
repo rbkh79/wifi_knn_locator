@@ -17,6 +17,10 @@
     <!-- For Android 13+ (API 33+) for basic phone state access -->
     <uses-permission android:name="android.permission.READ_BASIC_PHONE_STATE" />
     
+    <!-- Permissions for IMU sensors (Accelerometer, Gyroscope, Magnetometer) -->
+    <!-- Note: These sensors don't require special permissions on Android -->
+    <!-- They are automatically accessible via sensors_plus package -->
+    
     <!-- Permissions for file storage and downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
         android:maxSdkVersion="32" />

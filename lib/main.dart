@@ -58,6 +58,9 @@ import 'services/unified_localization_service.dart';
 import 'services/trajectory_service.dart';
 import 'services/path_prediction_service.dart';
 import 'services/indoor_csv_manager.dart';
+import 'services/outdoor_gps_bts_service.dart';
+import 'services/outdoor_imu_service.dart';
+import 'services/outdoor_csv_service.dart';
 import 'widgets/environment_indicator.dart';
 import 'widgets/trajectory_display.dart';
 import 'widgets/prediction_display.dart';
@@ -148,6 +151,14 @@ class _HomePageState extends State<HomePage> {
   
   // Location confidence state
   ConfidenceResult? _confidenceResult;
+  
+  // Outdoor recording state
+  bool _isRecordingGpsBts = false;
+  bool _isRecordingImu = false;
+  int _gpsBtsRecordCount = 0;
+  int _imuRecordCount = 0;
+  String _gpsBtsRecordingStatus = '';
+  String _imuRecordingStatus = '';
   
   // UI Controllers
   final TextEditingController _latController = TextEditingController();
@@ -918,12 +929,145 @@ class _HomePageState extends State<HomePage> {
     });
       }
 
+  // ===== Outdoor Recording Methods =====
+
+  Future<void> _toggleGpsBtsRecording() async {
+    if (_isRecordingGpsBts) {
+      // Stop recording
+      await OutdoorGpsBtsService.instance.stopRecording();
+      setState(() {
+        _isRecordingGpsBts = false;
+        _gpsBtsRecordingStatus = 'Recording stopped';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('GPS+BTS recording stopped'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else {
+      // Start recording
+      final success = await OutdoorGpsBtsService.instance.startRecording(
+        onRecordCountChanged: (count) {
+          setState(() {
+            _gpsBtsRecordCount = count;
+          });
+        },
+        onStatusChanged: (status) {
+          setState(() {
+            _gpsBtsRecordingStatus = status;
+          });
+        },
+      );
+      
+      if (success) {
+        setState(() {
+          _isRecordingGpsBts = true;
+          _gpsBtsRecordingStatus = 'Recording...';
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('GPS+BTS recording started'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to start GPS+BTS recording: $_gpsBtsRecordingStatus'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _toggleImuRecording() async {
+    if (_isRecordingImu) {
+      // Stop recording
+      await OutdoorImuService.instance.stopRecording();
+      setState(() {
+        _isRecordingImu = false;
+        _imuRecordingStatus = 'Recording stopped';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('IMU recording stopped'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else {
+      // Start recording
+      final success = await OutdoorImuService.instance.startRecording(
+        onRecordCountChanged: (count) {
+          setState(() {
+            _imuRecordCount = count;
+          });
+        },
+        onStatusChanged: (status) {
+          setState(() {
+            _imuRecordingStatus = status;
+          });
+        },
+      );
+      
+      if (success) {
+        setState(() {
+          _isRecordingImu = true;
+          _imuRecordingStatus = 'Recording...';
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('IMU recording started'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to start IMU recording: $_imuRecordingStatus'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _exportOutdoorGpsBts() async {
+    await OutdoorCsvService.exportAndOpenGpsBtsCsv();
+  }
+
+  Future<void> _exportOutdoorImu() async {
+    await OutdoorCsvService.exportAndOpenImuCsv();
+  }
+
   @override
   void dispose() {
     _latController.dispose();
     _lonController.dispose();
     _zoneController.dispose();
     _contextController.dispose();
+    
+    // توقف ضبط Outdoor در صورت فعال بودن
+    if (_isRecordingGpsBts) {
+      OutdoorGpsBtsService.instance.stopRecording();
+    }
+    if (_isRecordingImu) {
+      OutdoorImuService.instance.stopRecording();
+    }
+    
     super.dispose();
   }
 
@@ -979,6 +1123,10 @@ class _HomePageState extends State<HomePage> {
             
             // بخش اسکن Wi-Fi
             _buildWifiScanSection(),
+            const SizedBox(height: 16),
+            
+            // بخش Outdoor Recording
+            _buildOutdoorRecordingSection(),
             const SizedBox(height: 16),
             
             // بخش نقشه و نقاط مرجع
@@ -1731,6 +1879,172 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOutdoorRecordingSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: Icon(Icons.directions_car, color: Colors.green.shade700),
+        title: const Text(
+          'Outdoor Recording (GPS+BTS+IMU)',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          _isRecordingGpsBts || _isRecordingImu
+              ? 'Recording in progress...'
+              : 'Record outdoor positioning data',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        initiallyExpanded: false,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // GPS+BTS Recording
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.gps_fixed, color: Colors.blue.shade700),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'GPS + BTS Recording',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (_isRecordingGpsBts) ...[
+                        Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Recording... ($_gpsBtsRecordCount records)',
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _toggleGpsBtsRecording,
+                              icon: Icon(_isRecordingGpsBts ? Icons.stop : Icons.play_arrow),
+                              label: Text(_isRecordingGpsBts ? 'Stop Recording' : 'Start Recording'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isRecordingGpsBts ? Colors.red : Colors.blue.shade700,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_gpsBtsRecordingStatus.isNotEmpty && !_isRecordingGpsBts) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _gpsBtsRecordingStatus,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // IMU Recording
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.sensors, color: Colors.orange.shade700),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'IMU Recording (Accelerometer + Gyroscope + Magnetometer)',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (_isRecordingImu) ...[
+                        Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Recording... ($_imuRecordCount records)',
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _toggleImuRecording,
+                              icon: Icon(_isRecordingImu ? Icons.stop : Icons.play_arrow),
+                              label: Text(_isRecordingImu ? 'Stop Recording' : 'Start Recording'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isRecordingImu ? Colors.red : Colors.orange.shade700,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_imuRecordingStatus.isNotEmpty && !_isRecordingImu) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _imuRecordingStatus,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -2539,6 +2853,67 @@ class _HomePageState extends State<HomePage> {
                     label: const Text('دانلود داده‌های WiFi'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Outdoor Export Section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.cyan.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.cyan.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.directions_car, color: Colors.cyan.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Outdoor Dataset Export',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Export GPS+BTS and IMU data collected during outdoor recording',
+                        style: TextStyle(fontSize: 11, color: Colors.cyan.shade800),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportOutdoorGpsBts,
+                    icon: const Icon(Icons.gps_fixed),
+                    label: const Text('Export Outdoor GPS+BTS Dataset'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.cyan.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportOutdoorImu,
+                    icon: const Icon(Icons.sensors),
+                    label: const Text('Export Outdoor IMU Dataset'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
