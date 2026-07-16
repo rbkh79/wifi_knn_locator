@@ -932,7 +932,9 @@ class _HomePageState extends State<HomePage> {
   // ===== Outdoor Recording Methods =====
 
   Future<void> _toggleGpsBtsRecording() async {
+    debugPrint('[DEBUG] Start Recording clicked');
     if (_isRecordingGpsBts) {
+      debugPrint('[DEBUG] Stop Recording clicked');
       // Stop recording
       await OutdoorGpsBtsService.instance.stopRecording();
       setState(() {
@@ -948,6 +950,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } else {
+      debugPrint('[DEBUG] Starting GPS+BTS recording service...');
       // Start recording
       final success = await OutdoorGpsBtsService.instance.startRecording(
         onRecordCountChanged: (count) {
@@ -963,6 +966,7 @@ class _HomePageState extends State<HomePage> {
       );
       
       if (success) {
+        debugPrint('[DEBUG] GPS+BTS recording service started successfully');
         setState(() {
           _isRecordingGpsBts = true;
           _gpsBtsRecordingStatus = 'Recording...';
@@ -976,6 +980,7 @@ class _HomePageState extends State<HomePage> {
           );
         }
       } else {
+        debugPrint('[DEBUG] GPS+BTS recording service failed to start');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

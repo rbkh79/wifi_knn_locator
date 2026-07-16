@@ -46,7 +46,7 @@ class OutdoorGpsBtsService {
     Function(int recordCount)? onRecordCountChanged,
     Function(String status)? onStatusChanged,
   }) async {
-    debugPrint('===== GPS+BTS Recording Start Request =====');
+    debugPrint('[DEBUG] GPS+BTS Recording Start Request');
     if (_isRecording) {
       debugPrint('Outdoor GPS+BTS recording already in progress');
       return false;
@@ -57,21 +57,21 @@ class OutdoorGpsBtsService {
 
     try {
       // بررسی مجوزهای GPS
-      debugPrint('Checking GPS service enabled...');
+      debugPrint('[DEBUG] Checking GPS service enabled...');
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      debugPrint('GPS service enabled: $serviceEnabled');
+      debugPrint('[DEBUG] GPS service enabled: $serviceEnabled');
       if (!serviceEnabled) {
         _notifyStatus('GPS service is disabled');
         return false;
       }
 
-      debugPrint('Checking GPS permission...');
+      debugPrint('[DEBUG] Checking GPS permission...');
       LocationPermission permission = await Geolocator.checkPermission();
-      debugPrint('GPS permission status: $permission');
+      debugPrint('[DEBUG] GPS permission status: $permission');
       if (permission == LocationPermission.denied) {
-        debugPrint('Requesting GPS permission...');
+        debugPrint('[DEBUG] Requesting GPS permission...');
         permission = await Geolocator.requestPermission();
-        debugPrint('GPS permission after request: $permission');
+        debugPrint('[DEBUG] GPS permission after request: $permission');
         if (permission == LocationPermission.denied) {
           _notifyStatus('GPS permission denied');
           return false;
@@ -83,13 +83,13 @@ class OutdoorGpsBtsService {
       }
 
       // بررسی مجوز BTS
-      debugPrint('Checking BTS permissions...');
+      debugPrint('[DEBUG] Checking BTS permissions...');
       final hasBtsPermission = await CellScanner.checkPermissions();
-      debugPrint('BTS permissions granted: $hasBtsPermission');
+      debugPrint('[DEBUG] BTS permissions granted: $hasBtsPermission');
       if (!hasBtsPermission) {
-        debugPrint('Requesting BTS permissions...');
+        debugPrint('[DEBUG] Requesting BTS permissions...');
         final granted = await CellScanner.requestPermissions();
-        debugPrint('BTS permissions after request: $granted');
+        debugPrint('[DEBUG] BTS permissions after request: $granted');
         if (!granted) {
           _notifyStatus('BTS permission denied');
           return false;
@@ -98,44 +98,40 @@ class OutdoorGpsBtsService {
 
       // پاک کردن رکوردهای قبلی
       _records.clear();
-      debugPrint('Cleared previous records');
+      debugPrint('[DEBUG] Cleared previous records');
       
       // شروع ضبط
       _isRecording = true;
       _notifyStatus('Recording started');
-      debugPrint('===== Recording started =====');
+      debugPrint('[DEBUG] Recording started');
       
-      // شروع استریم GPS
-      debugPrint('Starting GPS position stream...');
-      final locationSettings = AndroidSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 0,
-        forceLocationManager: false,
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationText: 'Recording GPS+BTS data for outdoor positioning',
-          notificationTitle: 'Outdoor Recording',
-          enableWakeLock: true,
-        ),
-      );
+      // استفاده از تایمر برای ضبط GPS + BTS
+      debugPrint('[DEBUG] Starting timer-based GPS+BTS polling (every 1 second)...');
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+        if (!_isRecording) {
+          debugPrint('[DEBUG] Timer cancelled - not recording');
+          timer.cancel();
+          return;
+        }
+        
+        debugPrint('[DEBUG] ===== Timer tick - Getting GPS position =====');
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.best,
+            timeLimit: const Duration(seconds: 10),
+          );
+          debugPrint('[DEBUG] GPS position obtained: lat=${position.latitude}, lng=${position.longitude}');
+          await _onPositionUpdate(position);
+        } catch (e) {
+          debugPrint('[DEBUG] GPS polling error: $e');
+        }
+      });
 
-      _positionStreamSubscription = Geolocator.getPositionStream(
-        locationSettings: locationSettings,
-      ).listen(
-        (Position position) {
-          debugPrint('GPS update received: lat=${position.latitude}, lon=${position.longitude}');
-          _onPositionUpdate(position);
-        },
-        onError: (error) {
-          debugPrint('GPS stream error: $error');
-          _notifyStatus('GPS error: $error');
-        },
-      );
-
-      debugPrint('Outdoor GPS+BTS recording started successfully');
-      debugPrint('GPS stream listener active');
+      debugPrint('[DEBUG] GPS+BTS timer started');
+      debugPrint('[DEBUG] Outdoor GPS+BTS recording started successfully');
       return true;
     } catch (e) {
-      debugPrint('Error starting GPS+BTS recording: $e');
+      debugPrint('[DEBUG] Error starting GPS+BTS recording: $e');
       _notifyStatus('Error: $e');
       _isRecording = false;
       return false;
@@ -144,74 +140,74 @@ class OutdoorGpsBtsService {
 
   /// توقف ضبط
   Future<void> stopRecording() async {
-    debugPrint('===== GPS+BTS Recording Stop Request =====');
+    debugPrint('[DEBUG] GPS+BTS Recording Stop Request');
     if (!_isRecording) {
-      debugPrint('Not recording, nothing to stop');
+      debugPrint('[DEBUG] Not recording, nothing to stop');
       return;
     }
 
     _isRecording = false;
-    debugPrint('Recording flag set to false');
+    debugPrint('[DEBUG] Recording flag set to false');
     
     // توقف استریم GPS
-    debugPrint('Cancelling GPS position stream...');
+    debugPrint('[DEBUG] Cancelling GPS position stream...');
     await _positionStreamSubscription?.cancel();
     _positionStreamSubscription = null;
-    debugPrint('GPS stream cancelled');
+    debugPrint('[DEBUG] GPS stream cancelled');
     
     // توقف تایمر
     _recordingTimer?.cancel();
     _recordingTimer = null;
 
     // ذخیره نهایی در CSV
-    debugPrint('Total records collected: ${_records.length}');
+    debugPrint('[DEBUG] Total records collected: ${_records.length}');
     if (_records.isNotEmpty) {
-      debugPrint('Saving records to CSV...');
+      debugPrint('[DEBUG] Saving records to CSV...');
       final filePath = await OutdoorCsvService.saveGpsBtsRecords(_records);
-      debugPrint('CSV saved to: $filePath');
+      debugPrint('[DEBUG] CSV saved to: $filePath');
       _notifyStatus('Saved ${_records.length} records to CSV');
     } else {
-      debugPrint('WARNING: No records to save!');
+      debugPrint('[DEBUG] WARNING: No records to save!');
       _notifyStatus('No records to save');
     }
 
-    debugPrint('Outdoor GPS+BTS recording stopped. Total records: ${_records.length}');
+    debugPrint('[DEBUG] Outdoor GPS+BTS recording stopped. Total records: ${_records.length}');
   }
 
   /// هندلر آپدیت موقعیت GPS
   Future<void> _onPositionUpdate(Position position) async {
     if (!_isRecording) {
-      debugPrint('Ignoring GPS update - not recording');
+      debugPrint('[DEBUG] Ignoring GPS update - not recording');
       return;
     }
 
-    debugPrint('===== Processing GPS Update =====');
-    debugPrint('GPS update received:');
-    debugPrint('  Latitude: ${position.latitude}');
-    debugPrint('  Longitude: ${position.longitude}');
-    debugPrint('  Altitude: ${position.altitude}');
-    debugPrint('  Accuracy: ${position.accuracy}');
-    debugPrint('  Speed: ${position.speed}');
-    debugPrint('  Timestamp: ${position.timestamp}');
+    debugPrint('[DEBUG] ===== Processing GPS Update =====');
+    debugPrint('[DEBUG] GPS update:');
+    debugPrint('[DEBUG]   Latitude: ${position.latitude}');
+    debugPrint('[DEBUG]   Longitude: ${position.longitude}');
+    debugPrint('[DEBUG]   Altitude: ${position.altitude}');
+    debugPrint('[DEBUG]   Accuracy: ${position.accuracy}');
+    debugPrint('[DEBUG]   Speed: ${position.speed}');
+    debugPrint('[DEBUG]   Timestamp: ${position.timestamp}');
 
     try {
       // اسکن BTS به صورت موازی
-      debugPrint('Starting BTS scan...');
+      debugPrint('[DEBUG] BTS scan started');
       CellScanResult? cellScanResult;
       try {
         cellScanResult = await CellScanner.performScan();
-        debugPrint('BTS scan completed');
-        debugPrint('  Serving cell: ${cellScanResult?.servingCell != null}');
-        debugPrint('  Neighboring cells: ${cellScanResult?.neighboringCells.length ?? 0}');
+        debugPrint('[DEBUG] BTS data received:');
+        debugPrint('[DEBUG]   Serving cell: ${cellScanResult?.servingCell != null}');
+        debugPrint('[DEBUG]   Neighboring cells: ${cellScanResult?.neighboringCells.length ?? 0}');
         if (cellScanResult?.servingCell != null) {
-          debugPrint('  BTS Cell ID: ${cellScanResult!.servingCell!.cellId}');
-          debugPrint('  BTS Signal Strength: ${cellScanResult.servingCell!.signalStrength}');
-          debugPrint('  BTS MCC: ${cellScanResult.servingCell!.mcc}');
-          debugPrint('  BTS MNC: ${cellScanResult.servingCell!.mnc}');
-          debugPrint('  BTS LAC/TAC: ${cellScanResult.servingCell!.lac ?? cellScanResult.servingCell!.tac}');
+          debugPrint('[DEBUG]   BTS Cell ID: ${cellScanResult!.servingCell!.cellId}');
+          debugPrint('[DEBUG]   BTS Signal Strength: ${cellScanResult.servingCell!.signalStrength}');
+          debugPrint('[DEBUG]   BTS MCC: ${cellScanResult.servingCell!.mcc}');
+          debugPrint('[DEBUG]   BTS MNC: ${cellScanResult.servingCell!.mnc}');
+          debugPrint('[DEBUG]   BTS LAC/TAC: ${cellScanResult.servingCell!.lac ?? cellScanResult.servingCell!.tac}');
         }
       } catch (e) {
-        debugPrint('BTS scan error: $e');
+        debugPrint('[DEBUG] BTS scan error: $e');
         // ادامه با GPS فقط
       }
 
@@ -245,29 +241,139 @@ class OutdoorGpsBtsService {
       );
 
       _records.add(record);
-      debugPrint('===== Saving record =====');
-      debugPrint('  Record count: ${_records.length}');
-      debugPrint('  Record data: ${record.toCsvRow()}');
+      debugPrint('[DEBUG] Saving CSV row:');
+      debugPrint('[DEBUG]   Record count: ${_records.length}');
+      debugPrint('[DEBUG]   Record data: ${record.toCsvRow()}');
       
       // به‌روزرسانی UI
       _onRecordCountChanged?.call(_records.length);
       
-      debugPrint('GPS+BTS record saved: ${record.latitude}, ${record.longitude}, BTS: ${servingCell?.cellId}');
+      debugPrint('[DEBUG] CSV write successful (in-memory)');
+      debugPrint('[DEBUG] GPS+BTS record saved: ${record.latitude}, ${record.longitude}, BTS: ${servingCell?.cellId}');
     } catch (e) {
-      debugPrint('Error processing GPS update: $e');
+      debugPrint('[DEBUG] Error processing GPS update: $e');
     }
   }
 
   /// اطلاع‌رسانی وضعیت
   void _notifyStatus(String status) {
     _onStatusChanged?.call(status);
-    debugPrint('Outdoor GPS+BTS Status: $status');
+    debugPrint('[DEBUG] Outdoor GPS+BTS Status: $status');
   }
 
   /// پاک کردن رکوردها (بدون ذخیره)
   void clearRecords() {
     _records.clear();
     _onRecordCountChanged?.call(0);
+  }
+
+  /// تست ساده GPS-only با تایمر (بدون وابستگی به BTS)
+  /// این متد برای عیب‌یابی استفاده می‌شود
+  Future<bool> startGpsOnlyTest({
+    Function(int recordCount)? onRecordCountChanged,
+    Function(String status)? onStatusChanged,
+  }) async {
+    debugPrint('[DEBUG] ===== GPS-Only Test Start =====');
+    if (_isRecording) {
+      debugPrint('[DEBUG] Already recording, stop first');
+      return false;
+    }
+
+    _onRecordCountChanged = onRecordCountChanged;
+    _onStatusChanged = onStatusChanged;
+
+    try {
+      // بررسی مجوز GPS
+      debugPrint('[DEBUG] Checking GPS service enabled...');
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      debugPrint('[DEBUG] GPS service enabled: $serviceEnabled');
+      if (!serviceEnabled) {
+        _notifyStatus('GPS service is disabled');
+        return false;
+      }
+
+      debugPrint('[DEBUG] Checking GPS permission...');
+      LocationPermission permission = await Geolocator.checkPermission();
+      debugPrint('[DEBUG] GPS permission status: $permission');
+      if (permission == LocationPermission.denied) {
+        debugPrint('[DEBUG] Requesting GPS permission...');
+        permission = await Geolocator.requestPermission();
+        debugPrint('[DEBUG] GPS permission after request: $permission');
+        if (permission == LocationPermission.denied) {
+          _notifyStatus('GPS permission denied');
+          return false;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        _notifyStatus('GPS permission permanently denied');
+        return false;
+      }
+
+      // پاک کردن رکوردهای قبلی
+      _records.clear();
+      debugPrint('[DEBUG] Cleared previous records');
+      
+      // شروع ضبط
+      _isRecording = true;
+      _notifyStatus('GPS-Only test started');
+      debugPrint('[DEBUG] GPS-Only test started');
+      
+      // استفاده از تایمر به جای استریم برای تست
+      debugPrint('[DEBUG] Starting timer-based GPS polling (every 5 seconds)...');
+      _recordingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+        if (!_isRecording) {
+          debugPrint('[DEBUG] Timer cancelled - not recording');
+          timer.cancel();
+          return;
+        }
+        
+        debugPrint('[DEBUG] ===== Timer tick - Getting GPS position =====');
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.best,
+            timeLimit: const Duration(seconds: 10),
+          );
+          debugPrint('[DEBUG] GPS position obtained: lat=${position.latitude}, lng=${position.longitude}');
+          
+          // ایجاد رکورد GPS-only
+          final record = OutdoorGpsBtsRecord(
+            timestamp: DateTime.now(),
+            latitude: position.latitude,
+            longitude: position.longitude,
+            altitude: position.altitude,
+            accuracy: position.accuracy,
+            speed: position.speed,
+            bearing: position.heading,
+            provider: 'GPS',
+            mcc: null,
+            mnc: null,
+            lac: null,
+            tac: null,
+            cellId: null,
+            signalStrength: null,
+            networkType: null,
+          );
+
+          _records.add(record);
+          debugPrint('[DEBUG] GPS-Only record saved:');
+          debugPrint('[DEBUG]   Record count: ${_records.length}');
+          debugPrint('[DEBUG]   Record data: ${record.toCsvRow()}');
+          
+          _onRecordCountChanged?.call(_records.length);
+          debugPrint('[DEBUG] GPS-Only CSV write successful (in-memory)');
+        } catch (e) {
+          debugPrint('[DEBUG] GPS-Only test error getting position: $e');
+        }
+      });
+
+      debugPrint('[DEBUG] GPS-Only test timer started');
+      return true;
+    } catch (e) {
+      debugPrint('[DEBUG] Error starting GPS-Only test: $e');
+      _notifyStatus('Error: $e');
+      _isRecording = false;
+      return false;
+    }
   }
 }
 

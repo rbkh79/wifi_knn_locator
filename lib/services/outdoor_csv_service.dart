@@ -13,46 +13,47 @@ import 'outdoor_imu_service.dart';
 class OutdoorCsvService {
   /// ذخیره رکوردهای GPS+BTS در CSV
   static Future<String?> saveGpsBtsRecords(List<OutdoorGpsBtsRecord> records) async {
-    debugPrint('===== Saving GPS+BTS Records to CSV =====');
-    debugPrint('Number of records to save: ${records.length}');
+    debugPrint('[DEBUG] ===== Saving GPS+BTS Records to CSV =====');
+    debugPrint('[DEBUG] Number of records to save: ${records.length}');
     if (records.isEmpty) {
-      debugPrint('No GPS+BTS records to save');
+      debugPrint('[DEBUG] No GPS+BTS records to save');
       return null;
     }
 
     try {
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final fileName = 'outdoor_gps_bts_$timestamp.csv';
-      debugPrint('Filename: $fileName');
+      debugPrint('[DEBUG] Filename: $fileName');
       
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/$fileName');
-      debugPrint('File path: ${file.path}');
+      debugPrint('[DEBUG] File path: ${file.path}');
 
       // ساخت CSV
       final csvData = <List<dynamic>>[];
       csvData.add(OutdoorGpsBtsRecord.csvHeader);
-      debugPrint('CSV Header: ${OutdoorGpsBtsRecord.csvHeader}');
+      debugPrint('[DEBUG] CSV Header: ${OutdoorGpsBtsRecord.csvHeader}');
       
       for (int i = 0; i < records.length; i++) {
         final record = records[i];
         csvData.add(record.toCsvRow());
         if (i < 3 || i == records.length - 1) {
-          debugPrint('Record ${i + 1}: ${record.toCsvRow()}');
+          debugPrint('[DEBUG] Record ${i + 1}: ${record.toCsvRow()}');
         }
       }
 
       final csvString = const ListToCsvConverter().convert(csvData);
-      debugPrint('CSV string length: ${csvString.length} characters');
+      debugPrint('[DEBUG] CSV string length: ${csvString.length} characters');
+      debugPrint('[DEBUG] Writing to file...');
       await file.writeAsString(csvString);
-      debugPrint('File written successfully');
+      debugPrint('[DEBUG] File written successfully');
 
-      debugPrint('GPS+BTS CSV saved to: ${file.path}');
-      debugPrint('===== CSV Save Complete =====');
+      debugPrint('[DEBUG] GPS+BTS CSV saved to: ${file.path}');
+      debugPrint('[DEBUG] ===== CSV Save Complete =====');
       return file.path;
     } catch (e) {
-      debugPrint('Error saving GPS+BTS CSV: $e');
-      debugPrint('Stack trace: ${StackTrace.current}');
+      debugPrint('[DEBUG] Error saving GPS+BTS CSV: $e');
+      debugPrint('[DEBUG] Stack trace: ${StackTrace.current}');
       return null;
     }
   }
