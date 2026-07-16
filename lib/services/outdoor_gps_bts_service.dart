@@ -46,6 +46,7 @@ class OutdoorGpsBtsService {
     Function(int recordCount)? onRecordCountChanged,
     Function(String status)? onStatusChanged,
   }) async {
+    debugPrint('===== GPS+BTS Recording Start Request =====');
     if (_isRecording) {
       debugPrint('Outdoor GPS+BTS recording already in progress');
       return false;
@@ -56,15 +57,21 @@ class OutdoorGpsBtsService {
 
     try {
       // بررسی مجوزهای GPS
+      debugPrint('Checking GPS service enabled...');
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      debugPrint('GPS service enabled: $serviceEnabled');
       if (!serviceEnabled) {
         _notifyStatus('GPS service is disabled');
         return false;
       }
 
+      debugPrint('Checking GPS permission...');
       LocationPermission permission = await Geolocator.checkPermission();
+      debugPrint('GPS permission status: $permission');
       if (permission == LocationPermission.denied) {
+        debugPrint('Requesting GPS permission...');
         permission = await Geolocator.requestPermission();
+        debugPrint('GPS permission after request: $permission');
         if (permission == LocationPermission.denied) {
           _notifyStatus('GPS permission denied');
           return false;
@@ -76,9 +83,13 @@ class OutdoorGpsBtsService {
       }
 
       // بررسی مجوز BTS
+      debugPrint('Checking BTS permissions...');
       final hasBtsPermission = await CellScanner.checkPermissions();
+      debugPrint('BTS permissions granted: $hasBtsPermission');
       if (!hasBtsPermission) {
+        debugPrint('Requesting BTS permissions...');
         final granted = await CellScanner.requestPermissions();
+        debugPrint('BTS permissions after request: $granted');
         if (!granted) {
           _notifyStatus('BTS permission denied');
           return false;
@@ -87,12 +98,15 @@ class OutdoorGpsBtsService {
 
       // پاک کردن رکوردهای قبلی
       _records.clear();
+      debugPrint('Cleared previous records');
       
       // شروع ضبط
       _isRecording = true;
       _notifyStatus('Recording started');
+      debugPrint('===== Recording started =====');
       
       // شروع استریم GPS
+      debugPrint('Starting GPS position stream...');
       final locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.best,
         distanceFilter: 0,
@@ -108,6 +122,7 @@ class OutdoorGpsBtsService {
         locationSettings: locationSettings,
       ).listen(
         (Position position) {
+          debugPrint('GPS update received: lat=${position.latitude}, lon=${position.longitude}');
           _onPositionUpdate(position);
         },
         onError: (error) {
@@ -116,7 +131,8 @@ class OutdoorGpsBtsService {
         },
       );
 
-      debugPrint('Outdoor GPS+BTS recording started');
+      debugPrint('Outdoor GPS+BTS recording started successfully');
+      debugPrint('GPS stream listener active');
       return true;
     } catch (e) {
       debugPrint('Error starting GPS+BTS recording: $e');
@@ -128,23 +144,34 @@ class OutdoorGpsBtsService {
 
   /// توقف ضبط
   Future<void> stopRecording() async {
-    if (!_isRecording) return;
+    debugPrint('===== GPS+BTS Recording Stop Request =====');
+    if (!_isRecording) {
+      debugPrint('Not recording, nothing to stop');
+      return;
+    }
 
     _isRecording = false;
+    debugPrint('Recording flag set to false');
     
     // توقف استریم GPS
+    debugPrint('Cancelling GPS position stream...');
     await _positionStreamSubscription?.cancel();
     _positionStreamSubscription = null;
+    debugPrint('GPS stream cancelled');
     
     // توقف تایمر
     _recordingTimer?.cancel();
     _recordingTimer = null;
 
     // ذخیره نهایی در CSV
+    debugPrint('Total records collected: ${_records.length}');
     if (_records.isNotEmpty) {
-      await OutdoorCsvService.saveGpsBtsRecords(_records);
+      debugPrint('Saving records to CSV...');
+      final filePath = await OutdoorCsvService.saveGpsBtsRecords(_records);
+      debugPrint('CSV saved to: $filePath');
       _notifyStatus('Saved ${_records.length} records to CSV');
     } else {
+      debugPrint('WARNING: No records to save!');
       _notifyStatus('No records to save');
     }
 
@@ -153,13 +180,36 @@ class OutdoorGpsBtsService {
 
   /// هندلر آپدیت موقعیت GPS
   Future<void> _onPositionUpdate(Position position) async {
-    if (!_isRecording) return;
+    if (!_isRecording) {
+      debugPrint('Ignoring GPS update - not recording');
+      return;
+    }
+
+    debugPrint('===== Processing GPS Update =====');
+    debugPrint('GPS update received:');
+    debugPrint('  Latitude: ${position.latitude}');
+    debugPrint('  Longitude: ${position.longitude}');
+    debugPrint('  Altitude: ${position.altitude}');
+    debugPrint('  Accuracy: ${position.accuracy}');
+    debugPrint('  Speed: ${position.speed}');
+    debugPrint('  Timestamp: ${position.timestamp}');
 
     try {
       // اسکن BTS به صورت موازی
+      debugPrint('Starting BTS scan...');
       CellScanResult? cellScanResult;
       try {
         cellScanResult = await CellScanner.performScan();
+        debugPrint('BTS scan completed');
+        debugPrint('  Serving cell: ${cellScanResult?.servingCell != null}');
+        debugPrint('  Neighboring cells: ${cellScanResult?.neighboringCells.length ?? 0}');
+        if (cellScanResult?.servingCell != null) {
+          debugPrint('  BTS Cell ID: ${cellScanResult!.servingCell!.cellId}');
+          debugPrint('  BTS Signal Strength: ${cellScanResult.servingCell!.signalStrength}');
+          debugPrint('  BTS MCC: ${cellScanResult.servingCell!.mcc}');
+          debugPrint('  BTS MNC: ${cellScanResult.servingCell!.mnc}');
+          debugPrint('  BTS LAC/TAC: ${cellScanResult.servingCell!.lac ?? cellScanResult.servingCell!.tac}');
+        }
       } catch (e) {
         debugPrint('BTS scan error: $e');
         // ادامه با GPS فقط
@@ -172,6 +222,7 @@ class OutdoorGpsBtsService {
       CellTowerInfo? servingCell = cellScanResult?.servingCell;
       if (servingCell == null && cellScanResult?.neighboringCells.isNotEmpty == true) {
         servingCell = cellScanResult!.neighboringCells.first;
+        debugPrint('Using neighboring cell as serving: ${servingCell.cellId}');
       }
 
       // ایجاد رکورد
@@ -194,11 +245,14 @@ class OutdoorGpsBtsService {
       );
 
       _records.add(record);
+      debugPrint('===== Saving record =====');
+      debugPrint('  Record count: ${_records.length}');
+      debugPrint('  Record data: ${record.toCsvRow()}');
       
       // به‌روزرسانی UI
       _onRecordCountChanged?.call(_records.length);
       
-      debugPrint('GPS+BTS record: ${record.latitude}, ${record.longitude}, BTS: ${servingCell?.cellId}');
+      debugPrint('GPS+BTS record saved: ${record.latitude}, ${record.longitude}, BTS: ${servingCell?.cellId}');
     } catch (e) {
       debugPrint('Error processing GPS update: $e');
     }

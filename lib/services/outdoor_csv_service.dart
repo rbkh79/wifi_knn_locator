@@ -13,6 +13,8 @@ import 'outdoor_imu_service.dart';
 class OutdoorCsvService {
   /// ذخیره رکوردهای GPS+BTS در CSV
   static Future<String?> saveGpsBtsRecords(List<OutdoorGpsBtsRecord> records) async {
+    debugPrint('===== Saving GPS+BTS Records to CSV =====');
+    debugPrint('Number of records to save: ${records.length}');
     if (records.isEmpty) {
       debugPrint('No GPS+BTS records to save');
       return null;
@@ -21,25 +23,36 @@ class OutdoorCsvService {
     try {
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final fileName = 'outdoor_gps_bts_$timestamp.csv';
+      debugPrint('Filename: $fileName');
       
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/$fileName');
+      debugPrint('File path: ${file.path}');
 
       // ساخت CSV
       final csvData = <List<dynamic>>[];
       csvData.add(OutdoorGpsBtsRecord.csvHeader);
+      debugPrint('CSV Header: ${OutdoorGpsBtsRecord.csvHeader}');
       
-      for (final record in records) {
+      for (int i = 0; i < records.length; i++) {
+        final record = records[i];
         csvData.add(record.toCsvRow());
+        if (i < 3 || i == records.length - 1) {
+          debugPrint('Record ${i + 1}: ${record.toCsvRow()}');
+        }
       }
 
       final csvString = const ListToCsvConverter().convert(csvData);
+      debugPrint('CSV string length: ${csvString.length} characters');
       await file.writeAsString(csvString);
+      debugPrint('File written successfully');
 
       debugPrint('GPS+BTS CSV saved to: ${file.path}');
+      debugPrint('===== CSV Save Complete =====');
       return file.path;
     } catch (e) {
       debugPrint('Error saving GPS+BTS CSV: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       return null;
     }
   }
