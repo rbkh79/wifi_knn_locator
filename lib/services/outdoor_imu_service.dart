@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:geolocator/geolocator.dart';
 import 'outdoor_csv_service.dart';
 
 /// سرویس ضبط پیوسته IMU (Accelerometer + Gyroscope + Magnetometer) برای Outdoor Positioning
@@ -24,11 +25,15 @@ class OutdoorImuService {
   StreamSubscription<GyroscopeEvent>? _gyroscopeSubscription;
   StreamSubscription<MagnetometerEvent>? _magnetometerSubscription;
   
+  // تایمر دریافت GPS
+  Timer? _gpsTimer;
+  
   // داده‌های ذخیره شده
   final List<OutdoorImuRecord> _records = [];
   
   // تنظیمات ضبط
   static const Duration _samplingInterval = Duration(milliseconds: 100); // 10 Hz
+  static const Duration _gpsUpdateInterval = Duration(seconds: 1); // 1 Hz
   
   // داده‌های فعلی برای سینک کردن
   double? _currentAx, _currentAy, _currentAz;
@@ -37,6 +42,14 @@ class OutdoorImuService {
   DateTime? _lastAccelerometerTime;
   DateTime? _lastGyroscopeTime;
   DateTime? _lastMagnetometerTime;
+  
+  // داده‌های GPS dernière position
+  double? _currentLatitude;
+  double? _currentLongitude;
+  double? _currentAltitude;
+  double? _currentAccuracy;
+  double? _currentSpeed;
+  double? _currentBearing;
   
   // Callback برای به‌روزرسانی UI
   Function(int recordCount)? _onRecordCountChanged;
@@ -62,6 +75,32 @@ class OutdoorImuService {
     _onStatusChanged = onStatusChanged;
 
     try {
+      // بررسی مجوزهای GPS
+      debugPrint('[DEBUG] Checking GPS service enabled for IMU...');
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      debugPrint('[DEBUG] GPS service enabled: $serviceEnabled');
+      if (!serviceEnabled) {
+        _notifyStatus('GPS service is disabled');
+        return false;
+      }
+
+      debugPrint('[DEBUG] Checking GPS permission for IMU...');
+      LocationPermission permission = await Geolocator.checkPermission();
+      debugPrint('[DEBUG] GPS permission status: $permission');
+      if (permission == LocationPermission.denied) {
+        debugPrint('[DEBUG] Requesting GPS permission for IMU...');
+        permission = await Geolocator.requestPermission();
+        debugPrint('[DEBUG] GPS permission after request: $permission');
+        if (permission == LocationPermission.denied) {
+          _notifyStatus('GPS permission denied');
+          return false;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        _notifyStatus('GPS permission permanently denied');
+        return false;
+      }
+
       // پاک کردن رکوردهای قبلی
       _records.clear();
       _clearCurrentData();
@@ -105,6 +144,9 @@ class OutdoorImuService {
         debugPrint('Magnetometer not available: $e');
       }
 
+      // شروع دریافت GPS
+      _startGpsPolling();
+
       debugPrint('Outdoor IMU recording started');
       return true;
     } catch (e) {
@@ -113,6 +155,31 @@ class OutdoorImuService {
       _isRecording = false;
       return false;
     }
+  }
+
+  /// شروع تایمر دریافت GPS
+  void _startGpsPolling() {
+    _gpsTimer = Timer.periodic(_gpsUpdateInterval, (timer) async {
+      if (!_isRecording) {
+        timer.cancel();
+        return;
+      }
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best,
+          timeLimit: const Duration(seconds: 5),
+        );
+        _currentLatitude = position.latitude;
+        _currentLongitude = position.longitude;
+        _currentAltitude = position.altitude;
+        _currentAccuracy = position.accuracy;
+        _currentSpeed = position.speed;
+        _currentBearing = position.heading;
+        debugPrint('[DEBUG] IMU GPS update: lat=${_currentLatitude}, lng=${_currentLongitude}');
+      } catch (e) {
+        debugPrint('[DEBUG] IMU GPS polling error: $e');
+      }
+    });
   }
 
   /// توقف ضبط
@@ -130,6 +197,10 @@ class OutdoorImuService {
     
     await _magnetometerSubscription?.cancel();
     _magnetometerSubscription = null;
+
+    // توقف تایمر GPS
+    _gpsTimer?.cancel();
+    _gpsTimer = null;
 
     // ذخیره نهایی در CSV
     if (_records.isNotEmpty) {
@@ -211,6 +282,12 @@ class OutdoorImuService {
       my: _currentMy,
       mz: _currentMz,
       samplingIntervalMs: _samplingInterval.inMilliseconds,
+      latitude: _currentLatitude,
+      longitude: _currentLongitude,
+      altitude: _currentAltitude,
+      accuracy: _currentAccuracy,
+      speed: _currentSpeed,
+      bearing: _currentBearing,
     );
 
     _records.add(record);
@@ -235,6 +312,12 @@ class OutdoorImuService {
     _lastAccelerometerTime = null;
     _lastGyroscopeTime = null;
     _lastMagnetometerTime = null;
+    _currentLatitude = null;
+    _currentLongitude = null;
+    _currentAltitude = null;
+    _currentAccuracy = null;
+    _currentSpeed = null;
+    _currentBearing = null;
   }
 
   /// اطلاع‌رسانی وضعیت
@@ -264,6 +347,12 @@ class OutdoorImuRecord {
   final double? my; // Magnetometer Y (اختیاری)
   final double? mz; // Magnetometer Z (اختیاری)
   final int samplingIntervalMs; // فاصله نمونه‌برداری
+  final double? latitude;
+  final double? longitude;
+  final double? altitude;
+  final double? accuracy;
+  final double? speed;
+  final double? bearing;
 
   OutdoorImuRecord({
     required this.timestamp,
@@ -277,6 +366,12 @@ class OutdoorImuRecord {
     this.my,
     this.mz,
     required this.samplingIntervalMs,
+    this.latitude,
+    this.longitude,
+    this.altitude,
+    this.accuracy,
+    this.speed,
+    this.bearing,
   });
 
   /// تبدیل به لیست برای CSV
@@ -293,6 +388,12 @@ class OutdoorImuRecord {
       my?.toStringAsFixed(6) ?? '',
       mz?.toStringAsFixed(6) ?? '',
       samplingIntervalMs,
+      latitude ?? '',
+      longitude ?? '',
+      altitude ?? '',
+      accuracy ?? '',
+      speed ?? '',
+      bearing ?? '',
     ];
   }
 
@@ -309,5 +410,11 @@ class OutdoorImuRecord {
     'my',
     'mz',
     'SamplingIntervalMs',
+    'Latitude',
+    'Longitude',
+    'Altitude',
+    'Accuracy',
+    'Speed',
+    'Bearing',
   ];
 }

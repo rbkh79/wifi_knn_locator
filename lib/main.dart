@@ -1996,10 +1996,15 @@ class _HomePageState extends State<HomePage> {
                           Icon(Icons.sensors, color: Colors.orange.shade700),
                           const SizedBox(width: 8),
                           const Text(
-                            'IMU Recording (Accelerometer + Gyroscope + Magnetometer)',
+                            'IMU + GPS Recording (Accelerometer + Gyroscope + Magnetometer + GPS)',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Each IMU record includes the latest GPS position (updated at 1 Hz)',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 8),
                       if (_isRecordingImu) ...[
@@ -2916,7 +2921,7 @@ class _HomePageState extends State<HomePage> {
                   child: ElevatedButton.icon(
                     onPressed: _exportOutdoorImu,
                     icon: const Icon(Icons.sensors),
-                    label: const Text('Export Outdoor IMU Dataset'),
+                    label: const Text('Export Outdoor IMU+GPS Dataset'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber.shade700,
                       foregroundColor: Colors.white,
