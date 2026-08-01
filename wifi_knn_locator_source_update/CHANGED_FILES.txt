@@ -1,0 +1,5 @@
+lib/services/outdoor_gps_bts_service.dart
+lib/services/outdoor_csv_service.dart
+lib/wifi_scanner.dart
+android/app/src/main/AndroidManifest.xml
+README_COPY_TO_REPOSITORY_FA.md
