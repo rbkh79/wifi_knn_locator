@@ -1,160 +1,89 @@
 import 'dart:io';
-
-import 'package:csv/csv.dart';
-import 'package:flutter/foundation.dart';
-import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
+import 'package:csv/csv.dart';
+import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
-
 import 'outdoor_gps_bts_service.dart';
 import 'outdoor_imu_service.dart';
 
-/// CSV persistence and phone export for outdoor datasets.
+/// سرویس ذخیره و export داده‌های Outdoor به CSV
+/// 
+/// این سرویس داده‌های GPS+BTS و IMU را در فایل‌های CSV جداگانه ذخیره می‌کند
 class OutdoorCsvService {
-  static const ListToCsvConverter _converter = ListToCsvConverter();
-
-  static Future<String?> createGpsBtsWifiSessionFile({
-    required String sessionId,
-  }) async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final safeSession = sessionId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-      final file = File(
-        '${directory.path}/outdoor_gps_bts_wifi_$safeSession.csv',
-      );
-      final header = _converter.convert(<List<dynamic>>[
-        OutdoorGpsBtsRecord.csvHeader,
-      ]);
-      await file.writeAsString('$header\n', flush: true);
-      return file.path;
-    } catch (e, stackTrace) {
-      debugPrint('Could not create outdoor CSV: $e\n$stackTrace');
+  /// ذخیره رکوردهای GPS+BTS در CSV
+  static Future<String?> saveGpsBtsRecords(List<OutdoorGpsBtsRecord> records) async {
+    debugPrint('[DEBUG] ===== Saving GPS+BTS Records to CSV =====');
+    debugPrint('[DEBUG] Number of records to save: ${records.length}');
+    if (records.isEmpty) {
+      debugPrint('[DEBUG] No GPS+BTS records to save');
       return null;
     }
-  }
 
-  /// Appends one row immediately. This protects long recordings against loss.
-  static Future<void> appendGpsBtsWifiRecord(
-    String filePath,
-    OutdoorGpsBtsRecord record,
-  ) async {
-    final line = _converter.convert(<List<dynamic>>[record.toCsvRow()]);
-    await File(filePath).writeAsString(
-      '$line\n',
-      mode: FileMode.append,
-      flush: true,
-    );
-  }
-
-  /// Backward-compatible batch writer.
-  static Future<String?> saveGpsBtsRecords(
-    List<OutdoorGpsBtsRecord> records,
-  ) async {
-    if (records.isEmpty) return null;
-    final sessionId = records.first.sessionId;
-    final path = await createGpsBtsWifiSessionFile(sessionId: sessionId);
-    if (path == null) return null;
-    for (final record in records) {
-      await appendGpsBtsWifiRecord(path, record);
-    }
-    return path;
-  }
-
-  static Future<List<File>> getGpsBtsWifiCsvFiles() async {
     try {
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final fileName = 'outdoor_gps_bts_$timestamp.csv';
+      debugPrint('[DEBUG] Filename: $fileName');
+      
       final directory = await getApplicationDocumentsDirectory();
-      final files = directory
-          .listSync()
-          .whereType<File>()
-          .where(
-            (file) =>
-                file.path.endsWith('.csv') &&
-                (file.path.contains('outdoor_gps_bts_wifi_') ||
-                    file.path.contains('outdoor_gps_bts_')),
-          )
-          .toList()
-        ..sort(
-          (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-        );
-      return files;
-    } catch (e) {
-      debugPrint('Error listing outdoor GPS+BTS+WiFi files: $e');
-      return <File>[];
-    }
-  }
+      final file = File('${directory.path}/$fileName');
+      debugPrint('[DEBUG] File path: ${file.path}');
 
-  /// Kept so existing callers continue to compile.
-  static Future<List<File>> getGpsBtsCsvFiles() => getGpsBtsWifiCsvFiles();
-
-  /// Opens the Android/iOS share sheet so the researcher can save to Files,
-  /// Drive, email, messaging apps, or another phone folder.
-  static Future<String?> exportAndShareGpsBtsWifiCsv() async {
-    try {
-      final files = await getGpsBtsWifiCsvFiles();
-      if (files.isEmpty) {
-        debugPrint('No outdoor GPS+BTS+WiFi CSV file exists');
-        return null;
+      // ساخت CSV
+      final csvData = <List<dynamic>>[];
+      csvData.add(OutdoorGpsBtsRecord.csvHeader);
+      debugPrint('[DEBUG] CSV Header: ${OutdoorGpsBtsRecord.csvHeader}');
+      
+      for (int i = 0; i < records.length; i++) {
+        final record = records[i];
+        csvData.add(record.toCsvRow());
+        if (i < 3 || i == records.length - 1) {
+          debugPrint('[DEBUG] Record ${i + 1}: ${record.toCsvRow()}');
+        }
       }
 
-      final source = files.first;
-      final directory = await getApplicationDocumentsDirectory();
-      final stamp = DateTime.now()
-          .toUtc()
-          .toIso8601String()
-          .replaceAll(':', '-')
-          .replaceAll('.', '-');
-      final exportFile = File(
-        '${directory.path}/outdoor_gps_bts_wifi_export_$stamp.csv',
-      );
-      await source.copy(exportFile.path);
+      final csvString = const ListToCsvConverter().convert(csvData);
+      debugPrint('[DEBUG] CSV string length: ${csvString.length} characters');
+      debugPrint('[DEBUG] Writing to file...');
+      await file.writeAsString(csvString);
+      debugPrint('[DEBUG] File written successfully');
 
-      await Share.shareXFiles(
-        <XFile>[XFile(exportFile.path)],
-        subject: 'Outdoor GPS + BTS + Wi-Fi research dataset',
-        text: 'Outdoor synchronized GPS+BTS+WiFi CSV dataset',
-      );
-      return exportFile.path;
-    } catch (e, stackTrace) {
-      debugPrint('Outdoor export error: $e\n$stackTrace');
+      debugPrint('[DEBUG] GPS+BTS CSV saved to: ${file.path}');
+      debugPrint('[DEBUG] ===== CSV Save Complete =====');
+      return file.path;
+    } catch (e) {
+      debugPrint('[DEBUG] Error saving GPS+BTS CSV: $e');
+      debugPrint('[DEBUG] Stack trace: ${StackTrace.current}');
       return null;
     }
   }
 
-  /// Old UI method now routes to the corrected combined export.
-  static Future<void> exportAndOpenGpsBtsCsv() async {
-    await exportAndShareGpsBtsWifiCsv();
-  }
-
-  static Future<void> shareGpsBtsCsv() async {
-    await exportAndShareGpsBtsWifiCsv();
-  }
-
-  static Future<void> openLatestGpsBtsWifiCsv() async {
-    final files = await getGpsBtsWifiCsvFiles();
-    if (files.isNotEmpty) {
-      await OpenFile.open(files.first.path);
+  /// ذخیره رکوردهای IMU در CSV
+  static Future<String?> saveImuRecords(List<OutdoorImuRecord> records) async {
+    if (records.isEmpty) {
+      debugPrint('No IMU records to save');
+      return null;
     }
-  }
 
-  // -------------------- Existing IMU support --------------------
-
-  static Future<String?> saveImuRecords(
-    List<OutdoorImuRecord> records,
-  ) async {
-    if (records.isEmpty) return null;
     try {
-      final timestamp = DateTime.now()
-          .toUtc()
-          .toIso8601String()
-          .replaceAll(':', '-')
-          .replaceAll('.', '-');
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final fileName = 'outdoor_imu_$timestamp.csv';
+      
       final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/outdoor_imu_$timestamp.csv');
-      final rows = <List<dynamic>>[
-        OutdoorImuRecord.csvHeader,
-        ...records.map((record) => record.toCsvRow()),
-      ];
-      await file.writeAsString(_converter.convert(rows), flush: true);
+      final file = File('${directory.path}/$fileName');
+
+      // ساخت CSV
+      final csvData = <List<dynamic>>[];
+      csvData.add(OutdoorImuRecord.csvHeader);
+      
+      for (final record in records) {
+        csvData.add(record.toCsvRow());
+      }
+
+      final csvString = const ListToCsvConverter().convert(csvData);
+      await file.writeAsString(csvString);
+
+      debugPrint('IMU CSV saved to: ${file.path}');
       return file.path;
     } catch (e) {
       debugPrint('Error saving IMU CSV: $e');
@@ -162,67 +91,184 @@ class OutdoorCsvService {
     }
   }
 
+  /// دریافت لیست فایل‌های GPS+BTS CSV
+  static Future<List<File>> getGpsBtsCsvFiles() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final files = directory.listSync()
+          .whereType<File>()
+          .where((file) => file.path.contains('outdoor_gps_bts_') && file.path.endsWith('.csv'))
+          .toList()
+        ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync())); // جدیدترین اول
+      
+      return files;
+    } catch (e) {
+      debugPrint('Error getting GPS+BTS CSV files: $e');
+      return [];
+    }
+  }
+
+  /// دریافت لیست فایل‌های IMU CSV
   static Future<List<File>> getImuCsvFiles() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
-      final files = directory
-          .listSync()
+      final files = directory.listSync()
           .whereType<File>()
-          .where(
-            (file) =>
-                file.path.contains('outdoor_imu_') &&
-                file.path.endsWith('.csv'),
-          )
+          .where((file) => file.path.contains('outdoor_imu_') && file.path.endsWith('.csv'))
           .toList()
-        ..sort(
-          (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
-        );
+        ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync())); // جدیدترین اول
+      
       return files;
     } catch (e) {
-      debugPrint('Error listing IMU files: $e');
-      return <File>[];
+      debugPrint('Error getting IMU CSV files: $e');
+      return [];
     }
   }
 
+  /// Export و باز کردن فایل GPS+BTS CSV
+  static Future<void> exportAndOpenGpsBtsCsv() async {
+    try {
+      final files = await getGpsBtsCsvFiles();
+      if (files.isEmpty) {
+        debugPrint('No GPS+BTS CSV files to export');
+        return;
+      }
+
+      // جدیدترین فایل
+      final latestFile = files.first;
+      
+      // کپی به پوشه Documents با نام ساده‌تر
+      final directory = await getApplicationDocumentsDirectory();
+      final exportFileName = 'outdoor_gps_bts_export.csv';
+      final exportFile = File('${directory.path}/$exportFileName');
+      
+      await latestFile.copy(exportFile.path);
+      
+      // باز کردن فایل
+      await OpenFile.open(exportFile.path);
+      
+      debugPrint('GPS+BTS CSV exported and opened: ${exportFile.path}');
+    } catch (e) {
+      debugPrint('Error exporting GPS+BTS CSV: $e');
+    }
+  }
+
+  /// Export و باز کردن فایل IMU CSV
   static Future<void> exportAndOpenImuCsv() async {
-    final files = await getImuCsvFiles();
-    if (files.isEmpty) return;
-    final directory = await getApplicationDocumentsDirectory();
-    final exportFile = File('${directory.path}/outdoor_imu_export.csv');
-    await files.first.copy(exportFile.path);
-    await OpenFile.open(exportFile.path);
-  }
+    try {
+      final files = await getImuCsvFiles();
+      if (files.isEmpty) {
+        debugPrint('No IMU CSV files to export');
+        return;
+      }
 
-  static Future<void> shareImuCsv() async {
-    final files = await getImuCsvFiles();
-    if (files.isEmpty) return;
-    await Share.shareXFiles(
-      <XFile>[XFile(files.first.path)],
-      text: 'Outdoor IMU Dataset',
-    );
-  }
-
-  static Future<void> clearAllOutdoorCsvFiles() async {
-    final gpsBtsWifiFiles = await getGpsBtsWifiCsvFiles();
-    final imuFiles = await getImuCsvFiles();
-    final paths = <String>{
-      ...gpsBtsWifiFiles.map((file) => file.path),
-      ...imuFiles.map((file) => file.path),
-    };
-    for (final path in paths) {
-      final file = File(path);
-      if (await file.exists()) await file.delete();
+      // جدیدترین فایل
+      final latestFile = files.first;
+      
+      // کپی به پوشه Documents با نام ساده‌تر
+      final directory = await getApplicationDocumentsDirectory();
+      final exportFileName = 'outdoor_imu_export.csv';
+      final exportFile = File('${directory.path}/$exportFileName');
+      
+      await latestFile.copy(exportFile.path);
+      
+      // باز کردن فایل
+      await OpenFile.open(exportFile.path);
+      
+      debugPrint('IMU CSV exported and opened: ${exportFile.path}');
+    } catch (e) {
+      debugPrint('Error exporting IMU CSV: $e');
     }
   }
 
-  static Future<Map<String, dynamic>> getOutdoorCsvStatistics() async {
-    final radioFiles = await getGpsBtsWifiCsvFiles();
-    final imuFiles = await getImuCsvFiles();
-    return <String, dynamic>{
-      'gps_bts_wifi_files': radioFiles.length,
-      'gps_bts_files': radioFiles.length, // legacy key
-      'imu_files': imuFiles.length,
-      'total_files': radioFiles.length + imuFiles.length,
-    };
+  /// Share فایل GPS+BTS CSV
+  static Future<void> shareGpsBtsCsv() async {
+    try {
+      final files = await getGpsBtsCsvFiles();
+      if (files.isEmpty) {
+        debugPrint('No GPS+BTS CSV files to share');
+        return;
+      }
+
+      final latestFile = files.first;
+      await Share.shareXFiles([XFile(latestFile.path)], text: 'Outdoor GPS+BTS Dataset');
+      
+      debugPrint('GPS+BTS CSV shared: ${latestFile.path}');
+    } catch (e) {
+      debugPrint('Error sharing GPS+BTS CSV: $e');
+    }
+  }
+
+  /// Share فایل IMU CSV
+  static Future<void> shareImuCsv() async {
+    try {
+      final files = await getImuCsvFiles();
+      if (files.isEmpty) {
+        debugPrint('No IMU CSV files to share');
+        return;
+      }
+
+      final latestFile = files.first;
+      await Share.shareXFiles([XFile(latestFile.path)], text: 'Outdoor IMU Dataset');
+      
+      debugPrint('IMU CSV shared: ${latestFile.path}');
+    } catch (e) {
+      debugPrint('Error sharing IMU CSV: $e');
+    }
+  }
+
+  /// پاک کردن تمام فایل‌های Outdoor CSV
+  static Future<void> clearAllOutdoorCsvFiles() async {
+    try {
+      final gpsBtsFiles = await getGpsBtsCsvFiles();
+      final imuFiles = await getImuCsvFiles();
+      
+      for (final file in [...gpsBtsFiles, ...imuFiles]) {
+        await file.delete();
+      }
+      
+      debugPrint('Cleared ${gpsBtsFiles.length + imuFiles.length} outdoor CSV files');
+    } catch (e) {
+      debugPrint('Error clearing outdoor CSV files: $e');
+    }
+  }
+
+  /// دریافت آمار فایل‌های Outdoor
+  static Future<Map<String, dynamic>> getOutdoorStatistics() async {
+    try {
+      final gpsBtsFiles = await getGpsBtsCsvFiles();
+      final imuFiles = await getImuCsvFiles();
+
+      int totalGpsBtsRecords = 0;
+      int totalImuRecords = 0;
+
+      // شمارش رکوردهای GPS+BTS
+      for (final file in gpsBtsFiles) {
+        final content = await file.readAsString();
+        final lines = content.split('\n');
+        // منهای header و خط خالی آخر
+        totalGpsBtsRecords += lines.length - 2;
+      }
+
+      // شمارش رکوردهای IMU
+      for (final file in imuFiles) {
+        final content = await file.readAsString();
+        final lines = content.split('\n');
+        // منهای header و خط خالی آخر
+        totalImuRecords += lines.length - 2;
+      }
+
+      return {
+        'gps_bts_file_count': gpsBtsFiles.length,
+        'imu_file_count': imuFiles.length,
+        'total_gps_bts_records': totalGpsBtsRecords,
+        'total_imu_records': totalImuRecords,
+        'latest_gps_bts_file': gpsBtsFiles.isNotEmpty ? gpsBtsFiles.first.path : null,
+        'latest_imu_file': imuFiles.isNotEmpty ? imuFiles.first.path : null,
+      };
+    } catch (e) {
+      debugPrint('Error getting outdoor statistics: $e');
+      return {};
+    }
   }
 }
