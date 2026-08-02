@@ -150,6 +150,16 @@ class CellScanner {
         psc: _parseInt(map['psc']),
         pci: _parseInt(map['pci']),
         earfcn: _parseInt(map['earfcn']),
+        rsrp: _parseInt(map['rsrp']),
+        rsrq: _parseInt(map['rsrq']),
+        sinr: _parseInt(map['sinr']),
+        cqi: _parseInt(map['cqi']),
+        timingAdvance: _parseInt(map['timingAdvance']),
+        asuLevel: _parseInt(map['asuLevel']),
+        level: _parseInt(map['level']),
+        bandwidth: _parseInt(map['bandwidth']),
+        band: _parseInt(map['band']),
+        registered: map['registered'] as bool?,
       );
     } catch (e) {
       debugPrint('Error parsing cell info: $e, map: $map');

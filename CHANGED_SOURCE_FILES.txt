@@ -1,9 +1,0 @@
-lib/services/outdoor_gps_bts_service.dart
-lib/data_model.dart
-lib/cell_scanner.dart
-lib/main.dart
-android/app/src/main/kotlin/**/MainActivity.kt
-
-Unchanged intentionally:
-lib/services/outdoor_csv_service.dart  (existing download/open behavior preserved)
-android/app/src/main/AndroidManifest.xml (existing GPS+BTS permissions preserved)

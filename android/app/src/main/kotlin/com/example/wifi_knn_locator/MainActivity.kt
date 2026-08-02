@@ -426,6 +426,7 @@ class MainActivity : FlutterActivity() {
             when (cellInfo) {
                 is CellInfoLte -> {
                     val id = cellInfo.cellIdentity
+                    val signal = cellInfo.cellSignalStrength
                     val ci = id.ci
                     // فیلتر سخت‌گیرانه رو برداشتیم - فقط MAX_VALUE رو حذف می‌کنیم
                     if (ci == Int.MAX_VALUE) {
@@ -433,23 +434,67 @@ class MainActivity : FlutterActivity() {
                         return null
                     }
 
-                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mccString else id.mcc?.toString()
-                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mncString else id.mnc?.toString()
-                    val tac = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.tac.takeIf { it != Int.MAX_VALUE } else null
-                    val pci = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.pci.takeIf { it != Int.MAX_VALUE } else null
-                    val earfcn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) id.earfcn.takeIf { it != Int.MAX_VALUE } else null
+                    fun valid(value: Int): Int? = value.takeIf { it != Int.MAX_VALUE }
+                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        id.mccString
+                    } else {
+                        valid(id.mcc)?.toString()
+                    }
+                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        id.mncString
+                    } else {
+                        valid(id.mnc)?.toString()
+                    }
+                    val tac = valid(id.tac)
+                    val pci = valid(id.pci)
+                    val earfcn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        valid(id.earfcn)
+                    } else null
 
-                    Log.d(TAG, "LTE: ci=$ci, mcc=$mcc, mnc=$mnc, tac=$tac, dbm=${cellInfo.cellSignalStrength.dbm}")
+                    val rsrp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        valid(signal.rsrp)
+                    } else null
+                    val rsrq = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        valid(signal.rsrq)
+                    } else null
+                    val sinr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        valid(signal.rssnr)
+                    } else null
+                    val cqi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        valid(signal.cqi)
+                    } else null
+                    val timingAdvance = valid(signal.timingAdvance)
+                    val bandwidth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        valid(id.bandwidth)
+                    } else null
+                    val band = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        id.bands.firstOrNull()
+                    } else null
 
+                    Log.d(
+                        TAG,
+                        "LTE ci=$ci pci=$pci earfcn=$earfcn dbm=${signal.dbm} " +
+                            "rsrp=$rsrp rsrq=$rsrq sinr=$sinr ta=$timingAdvance"
+                    )
                     mapOf(
                         "cellId" to ci,
                         "tac" to tac,
                         "mcc" to mcc,
                         "mnc" to mnc,
-                        "signalStrength" to cellInfo.cellSignalStrength.dbm,
+                        "signalStrength" to signal.dbm,
                         "networkType" to "LTE",
                         "pci" to pci,
-                        "earfcn" to earfcn
+                        "earfcn" to earfcn,
+                        "rsrp" to rsrp,
+                        "rsrq" to rsrq,
+                        "sinr" to sinr,
+                        "cqi" to cqi,
+                        "timingAdvance" to timingAdvance,
+                        "asuLevel" to signal.asuLevel,
+                        "level" to signal.level,
+                        "bandwidth" to bandwidth,
+                        "band" to band,
+                        "registered" to cellInfo.isRegistered
                     )
                 }
 

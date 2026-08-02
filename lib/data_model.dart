@@ -341,6 +341,18 @@ class CellTowerInfo {
   final int? pci; // Physical Cell ID (4G/5G)
   final int? earfcn; // E-UTRA Absolute Radio Frequency Channel Number (4G)
 
+  // Extended LTE/NR research metrics. They may be null on some phones.
+  final int? rsrp;
+  final int? rsrq;
+  final int? sinr;
+  final int? cqi;
+  final int? timingAdvance;
+  final int? asuLevel;
+  final int? level;
+  final int? bandwidth;
+  final int? band;
+  final bool? registered;
+
   CellTowerInfo({
     this.cellId,
     this.lac,
@@ -352,6 +364,16 @@ class CellTowerInfo {
     this.psc,
     this.pci,
     this.earfcn,
+    this.rsrp,
+    this.rsrq,
+    this.sinr,
+    this.cqi,
+    this.timingAdvance,
+    this.asuLevel,
+    this.level,
+    this.bandwidth,
+    this.band,
+    this.registered,
   });
 
   Map<String, dynamic> toMap() {
@@ -366,21 +388,48 @@ class CellTowerInfo {
       'psc': psc,
       'pci': pci,
       'earfcn': earfcn,
+      'rsrp': rsrp,
+      'rsrq': rsrq,
+      'sinr': sinr,
+      'cqi': cqi,
+      'timing_advance': timingAdvance,
+      'asu_level': asuLevel,
+      'level': level,
+      'bandwidth': bandwidth,
+      'band': band,
+      'registered': registered,
     };
   }
 
   factory CellTowerInfo.fromMap(Map<String, dynamic> map) {
+    int? asInt(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value.toString());
+    }
+
     return CellTowerInfo(
-      cellId: map['cell_id'] as int?,
-      lac: map['lac'] as int?,
-      tac: map['tac'] as int?,
-      mcc: map['mcc'] as int?,
-      mnc: map['mnc'] as int?,
-      signalStrength: map['signal_strength'] as int?,
-      networkType: map['network_type'] as String?,
-      psc: map['psc'] as int?,
-      pci: map['pci'] as int?,
-      earfcn: map['earfcn'] as int?,
+      cellId: asInt(map['cell_id'] ?? map['cellId']),
+      lac: asInt(map['lac']),
+      tac: asInt(map['tac']),
+      mcc: asInt(map['mcc']),
+      mnc: asInt(map['mnc']),
+      signalStrength: asInt(map['signal_strength'] ?? map['signalStrength']),
+      networkType: (map['network_type'] ?? map['networkType']) as String?,
+      psc: asInt(map['psc']),
+      pci: asInt(map['pci']),
+      earfcn: asInt(map['earfcn']),
+      rsrp: asInt(map['rsrp']),
+      rsrq: asInt(map['rsrq']),
+      sinr: asInt(map['sinr']),
+      cqi: asInt(map['cqi']),
+      timingAdvance: asInt(map['timing_advance'] ?? map['timingAdvance']),
+      asuLevel: asInt(map['asu_level'] ?? map['asuLevel']),
+      level: asInt(map['level']),
+      bandwidth: asInt(map['bandwidth']),
+      band: asInt(map['band']),
+      registered: map['registered'] as bool?,
     );
   }
 

@@ -158,6 +158,7 @@ class _HomePageState extends State<HomePage> {
   int _gpsBtsRecordCount = 0;
   int _imuRecordCount = 0;
   String _gpsBtsRecordingStatus = '';
+  OutdoorGpsBtsRecord? _latestGpsBtsRecord;
   String _imuRecordingStatus = '';
   
   // UI Controllers
@@ -954,8 +955,15 @@ class _HomePageState extends State<HomePage> {
       // Start recording
       final success = await OutdoorGpsBtsService.instance.startRecording(
         onRecordCountChanged: (count) {
+          if (!mounted) return;
           setState(() {
             _gpsBtsRecordCount = count;
+          });
+        },
+        onLatestRecordChanged: (record) {
+          if (!mounted) return;
+          setState(() {
+            _latestGpsBtsRecord = record;
           });
         },
         onStatusChanged: (status) {
@@ -1928,7 +1936,7 @@ class _HomePageState extends State<HomePage> {
                           Icon(Icons.gps_fixed, color: Colors.blue.shade700),
                           const SizedBox(width: 8),
                           const Text(
-                            'GPS + BTS Recording',
+                            'GPS + BTS Recording (Extended Radio Metrics)',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -1969,6 +1977,36 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ],
                       ),
+                      if (_latestGpsBtsRecord != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Latest GPS + BTS sample',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            Chip(label: Text('GPS ±${_latestGpsBtsRecord!.accuracy?.toStringAsFixed(0) ?? '-'} m')),
+                            Chip(label: Text('CellID: ${_latestGpsBtsRecord!.cellId ?? '-'}')),
+                            Chip(label: Text('eNodeB: ${_latestGpsBtsRecord!.eNodeBId ?? '-'}')),
+                            Chip(label: Text('Local cell: ${_latestGpsBtsRecord!.localCellId ?? '-'}')),
+                            Chip(label: Text('PCI: ${_latestGpsBtsRecord!.pci ?? '-'}')),
+                            Chip(label: Text('EARFCN: ${_latestGpsBtsRecord!.earfcn ?? '-'}')),
+                            Chip(label: Text('Signal: ${_latestGpsBtsRecord!.signalStrength ?? '-'} dBm')),
+                            Chip(label: Text('RSRP: ${_latestGpsBtsRecord!.rsrp ?? '-'} dBm')),
+                            Chip(label: Text('RSRQ: ${_latestGpsBtsRecord!.rsrq ?? '-'} dB')),
+                            Chip(label: Text('SINR: ${_latestGpsBtsRecord!.sinr ?? '-'} dB')),
+                            Chip(label: Text('Timing advance: ${_latestGpsBtsRecord!.timingAdvance ?? '-'}')),
+                            Chip(label: Text('Neighbor cells: ${_latestGpsBtsRecord!.neighboringCells.length}')),
+                          ],
+                        ),
+                      ],
                       if (_gpsBtsRecordingStatus.isNotEmpty && !_isRecordingGpsBts) ...[
                         const SizedBox(height: 8),
                         Text(
