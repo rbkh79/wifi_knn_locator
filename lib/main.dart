@@ -933,36 +933,48 @@ class _HomePageState extends State<HomePage> {
   // ===== Outdoor Recording Methods =====
 
   Future<void> _toggleGpsBtsRecording() async {
-    debugPrint('[DEBUG] GPS+BTS record toggle');
+    debugPrint('[DEBUG] Start/Stop GPS+BTS clicked');
+    final service = OutdoorGpsBtsService.instance;
 
     if (_isRecordingGpsBts) {
-      final savedPath = await OutdoorGpsBtsService.instance.stopRecording();
+      debugPrint('[DEBUG] Stop Recording clicked');
 
+      final savedPath = await service.stopRecording();
       if (!mounted) return;
 
+      final count = service.recordCount;
       setState(() {
         _isRecordingGpsBts = false;
-        _gpsBtsRecordingStatus = savedPath != null
-            ? 'Saved $_gpsBtsRecordCount records'
-            : 'Recording stopped, but final save failed';
       });
+
+      late final String message;
+      late final Color color;
+
+      if (count == 0) {
+        message = 'Recording stopped, but no GPS+BTS records were captured.';
+        color = Colors.orange;
+      } else if (savedPath != null) {
+        message = 'Saved $count GPS+BTS records successfully.';
+        color = Colors.green;
+      } else {
+        message =
+            'SAVE ERROR: $count records were captured but final verification failed.';
+        color = Colors.red;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            savedPath != null
-                ? 'GPS+BTS saved successfully. You can export XLSX now.'
-                : 'GPS+BTS stopped, but final save failed. Try Export immediately.',
-          ),
-          backgroundColor: savedPath != null ? Colors.green : Colors.red,
+          content: Text(message),
+          backgroundColor: color,
           duration: const Duration(seconds: 5),
         ),
       );
-
       return;
     }
 
-    final success = await OutdoorGpsBtsService.instance.startRecording(
+    debugPrint('[DEBUG] Starting GPS+BTS recording service...');
+
+    final success = await service.startRecording(
       onRecordCountChanged: (count) {
         if (!mounted) return;
         setState(() {
@@ -986,19 +998,21 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     if (success) {
+      debugPrint('[DEBUG] GPS+BTS recording service started successfully');
       setState(() {
         _isRecordingGpsBts = true;
         _gpsBtsRecordingStatus =
-            'Recording... each completed sample is saved immediately';
+            'Recording... completed samples are saved immediately.';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('GPS+BTS recording started; write-through save is active'),
+          content: Text('GPS+BTS recording started; write-through save is active.'),
           backgroundColor: Colors.green,
         ),
       );
     } else {
+      debugPrint('[DEBUG] GPS+BTS recording service failed to start');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1068,7 +1082,60 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _exportOutdoorGpsBts() async {
-    await OutdoorCsvService.exportAndOpenGpsBtsCsv();
+    final service = OutdoorGpsBtsService.instance;
+
+    if (service.isRecording) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Stop GPS+BTS recording before opening the Excel export.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String? preferredCsvPath;
+    if (service.recordCount > 0) {
+      preferredCsvPath =
+          await service.flushCurrentSession() ?? service.latestSavedPath;
+    } else {
+      // After an app restart this may be null. The service will then find the
+      // newest non-empty recoverable GPS+BTS session on disk automatically.
+      preferredCsvPath = service.latestSavedPath;
+    }
+
+    final exportResult = await OutdoorCsvService.exportAndOpenGpsBtsXlsx(
+      csvPath: preferredCsvPath,
+    );
+
+    if (!mounted) return;
+
+    if (exportResult == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No saved Outdoor GPS+BTS data was found to export.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
+
+    final savedPublicly = exportResult.savedToDownloads;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          savedPublicly
+              ? 'Excel XLSX saved in Downloads/WiFiKnnLocator and opened.'
+              : 'Excel XLSX created and opened, but public Downloads copy failed.',
+        ),
+        backgroundColor: savedPublicly ? Colors.green : Colors.orange,
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   Future<void> _exportOutdoorImu() async {
@@ -2970,7 +3037,7 @@ class _HomePageState extends State<HomePage> {
                   child: ElevatedButton.icon(
                     onPressed: _exportOutdoorGpsBts,
                     icon: const Icon(Icons.gps_fixed),
-                    label: const Text('Open Outdoor GPS+BTS in Excel'),
+                    label: const Text('Open Outdoor GPS+BTS Excel (XLSX)'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.cyan.shade700,
                       foregroundColor: Colors.white,

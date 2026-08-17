@@ -2,11 +2,14 @@ package com.example.wifi_knn_locator_new
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
@@ -17,12 +20,14 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import java.io.File
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "wifi_knn_locator/cell_info"
+    private val FILE_EXPORT_CHANNEL = "wifi_knn_locator/file_export"
     private val TAG = "BTS_Service"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -35,6 +40,115 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FILE_EXPORT_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "saveFileToDownloads" -> {
+                        val sourcePath = call.argument<String>("sourcePath")
+                        val displayName = call.argument<String>("displayName")
+                        val mimeType = call.argument<String>("mimeType")
+                            ?: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+                        if (sourcePath.isNullOrBlank() || displayName.isNullOrBlank()) {
+                            result.error("BAD_ARGS", "sourcePath/displayName missing", null)
+                        } else {
+                            saveFileToDownloads(
+                                sourcePath = sourcePath,
+                                displayName = displayName,
+                                mimeType = mimeType,
+                                result = result
+                            )
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun saveFileToDownloads(
+        sourcePath: String,
+        displayName: String,
+        mimeType: String,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            try {
+                val source = File(sourcePath)
+                if (!source.exists() || source.length() <= 0L) {
+                    runOnUiThread {
+                        result.error("SOURCE_MISSING", "XLSX source file is missing/empty", null)
+                    }
+                    return@Thread
+                }
+
+                val savedLocation: String
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val resolver = contentResolver
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                        put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                        put(
+                            MediaStore.Downloads.RELATIVE_PATH,
+                            Environment.DIRECTORY_DOWNLOADS + "/WiFiKnnLocator"
+                        )
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+
+                    val uri = resolver.insert(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        values
+                    ) ?: throw IllegalStateException("Cannot create Downloads item")
+
+                    try {
+                        resolver.openOutputStream(uri)?.use { output ->
+                            source.inputStream().use { input ->
+                                input.copyTo(output)
+                            }
+                        } ?: throw IllegalStateException("Cannot open Downloads output stream")
+
+                        val finishValues = ContentValues().apply {
+                            put(MediaStore.Downloads.IS_PENDING, 0)
+                        }
+                        resolver.update(uri, finishValues, null, null)
+                        savedLocation = uri.toString()
+                    } catch (e: Exception) {
+                        try {
+                            resolver.delete(uri, null, null)
+                        } catch (_: Exception) {
+                        }
+                        throw e
+                    }
+                } else {
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOWNLOADS
+                    )
+                    if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
+                        throw IllegalStateException("Cannot create Downloads directory")
+                    }
+
+                    val appDir = File(downloadsDir, "WiFiKnnLocator")
+                    if (!appDir.exists() && !appDir.mkdirs()) {
+                        throw IllegalStateException("Cannot create WiFiKnnLocator directory")
+                    }
+
+                    val target = File(appDir, displayName)
+                    source.copyTo(target, overwrite = true)
+                    savedLocation = target.absolutePath
+                }
+
+                Log.d(TAG, "XLSX copied to public Downloads: $savedLocation")
+                runOnUiThread {
+                    result.success(savedLocation)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "saveFileToDownloads failed", e)
+                runOnUiThread {
+                    result.error("SAVE_DOWNLOADS_FAILED", e.message, null)
+                }
+            }
+        }.start()
     }
 
     @SuppressLint("MissingPermission")
@@ -117,33 +231,28 @@ class MainActivity : FlutterActivity() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun fetchCellInfoForManager(telephonyManager: TelephonyManager, result: MethodChannel.Result) {
-        Log.d(TAG, "fetchCellInfoForManager: شروع اسکن")
+    private fun fetchCellInfoForManager(
+        telephonyManager: TelephonyManager,
+        result: MethodChannel.Result
+    ) {
+        Log.d(TAG, "fetchCellInfoForManager: requesting fresh cell info")
 
-        try {
-            val allCellInfo = telephonyManager.allCellInfo
-            if (allCellInfo != null && allCellInfo.isNotEmpty()) {
-                Log.d(TAG, "allCellInfo موفق: ${allCellInfo.size} دکل")
-                result.success(processCellInfoList(allCellInfo))
-                return
-            } else {
-                Log.w(TAG, "allCellInfo خالی یا null، تلاش با requestCellInfoUpdate")
-            }
+        val cached = try {
+            telephonyManager.allCellInfo ?: emptyList()
         } catch (e: Exception) {
-            Log.e(TAG, "خطا در allCellInfo: ${e.message}")
+            Log.w(TAG, "Initial allCellInfo failed: ${e.message}")
+            emptyList()
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Log.d(TAG, "تلاش با requestCellInfoUpdate (Android 11+)")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val handler = Handler(Looper.getMainLooper())
             var callbackCalled = false
 
             val timeoutRunnable = Runnable {
                 if (!callbackCalled) {
                     callbackCalled = true
-                    Log.w(TAG, "requestCellInfoUpdate timeout")
-                    val fallback = try { telephonyManager.allCellInfo ?: emptyList() } catch (e: Exception) { emptyList() }
-                    result.success(processCellInfoList(fallback))
+                    Log.w(TAG, "Fresh cell-info request timed out; using cache")
+                    result.success(processCellInfoList(cached))
                 }
             }
 
@@ -152,51 +261,40 @@ class MainActivity : FlutterActivity() {
                     mainExecutor,
                     object : TelephonyManager.CellInfoCallback() {
                         override fun onCellInfo(list: MutableList<CellInfo>) {
-                            if (!callbackCalled) {
-                                callbackCalled = true
-                                handler.removeCallbacks(timeoutRunnable)
-                                Log.d(TAG, "requestCellInfoUpdate موفق: ${list.size} دکل")
-                                result.success(processCellInfoList(list))
-                            }
+                            if (callbackCalled) return
+                            callbackCalled = true
+                            handler.removeCallbacks(timeoutRunnable)
+
+                            val selected = if (list.isNotEmpty()) list else cached
+                            Log.d(
+                                TAG,
+                                "Fresh cell info: ${list.size}; cached fallback: ${cached.size}"
+                            )
+                            result.success(processCellInfoList(selected))
                         }
 
                         override fun onError(errorCode: Int, detail: Throwable?) {
-                            if (!callbackCalled) {
-                                callbackCalled = true
-                                handler.removeCallbacks(timeoutRunnable)
-                                Log.e(TAG, "requestCellInfoUpdate خطا: code=$errorCode")
-                                val fallback = try { telephonyManager.allCellInfo ?: emptyList() } catch (e: Exception) { emptyList() }
-                                result.success(processCellInfoList(fallback))
-                            }
+                            if (callbackCalled) return
+                            callbackCalled = true
+                            handler.removeCallbacks(timeoutRunnable)
+                            Log.w(
+                                TAG,
+                                "Fresh cell-info error=$errorCode detail=$detail; using cache"
+                            )
+                            result.success(processCellInfoList(cached))
                         }
                     }
                 )
-                handler.postDelayed(timeoutRunnable, 5000)
+
+                handler.postDelayed(timeoutRunnable, 3500)
             } catch (e: Exception) {
-                Log.e(TAG, "Exception در requestCellInfoUpdate: ${e.message}")
-                val fallback = try { telephonyManager.allCellInfo ?: emptyList() } catch (ex: Exception) { emptyList() }
-
-                if (fallback.isEmpty()) {
-                    try {
-                        val cellLoc = telephonyManager.cellLocation
-                        if (cellLoc != null) {
-                            val cellMap = cellLocationToMap(cellLoc)
-                            if (cellMap != null) {
-                                result.success(mapOf("serving_cell" to cellMap, "neighboring_cells" to emptyList<Any>()))
-                                return
-                            }
-                        }
-                    } catch (e2: Exception) {
-                        Log.w(TAG, "cellLocation fallback failed: ${e2.message}")
-                    }
-                }
-
-                result.success(processCellInfoList(fallback))
+                handler.removeCallbacks(timeoutRunnable)
+                Log.w(TAG, "requestCellInfoUpdate failed: ${e.message}")
+                result.success(processCellInfoList(cached))
             }
         } else {
-            Log.d(TAG, "Android < 11: استفاده از allCellInfo")
-            val list = try { telephonyManager.allCellInfo ?: emptyList() } catch (e: Exception) { emptyList() }
-            result.success(processCellInfoList(list))
+            Log.d(TAG, "Android < 10: using cached allCellInfo")
+            result.success(processCellInfoList(cached))
         }
     }
 
@@ -225,7 +323,7 @@ class MainActivity : FlutterActivity() {
                 val tmForSub = baseTelephonyManager.createForSubscriptionId(subInfo.subscriptionId)
                 Log.d(TAG, "اسکن سیم‌کارت: subId=${subInfo.subscriptionId}, slot=${subInfo.simSlotIndex}")
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     tmForSub.requestCellInfoUpdate(
                         mainExecutor,
                         object : TelephonyManager.CellInfoCallback() {
@@ -340,17 +438,111 @@ class MainActivity : FlutterActivity() {
             when (cellInfo) {
                 is CellInfoLte -> {
                     val id = cellInfo.cellIdentity
+                    val signal = cellInfo.cellSignalStrength
                     val ci = id.ci
-                    if (ci == Int.MAX_VALUE) return null
-                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mccString else id.mcc?.toString()
-                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.mncString else id.mnc?.toString()
-                    val tac = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.tac.takeIf { it != Int.MAX_VALUE } else null
-                    val pci = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) id.pci.takeIf { it != Int.MAX_VALUE } else null
-                    val earfcn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) id.earfcn.takeIf { it != Int.MAX_VALUE } else null
-                    Log.d(TAG, "LTE: ci=$ci, mcc=$mcc, mnc=$mnc, tac=$tac, dbm=${cellInfo.cellSignalStrength.dbm}")
-                    mapOf("cellId" to ci, "tac" to tac, "mcc" to mcc, "mnc" to mnc,
-                        "signalStrength" to cellInfo.cellSignalStrength.dbm, "networkType" to "LTE",
-                        "pci" to pci, "earfcn" to earfcn)
+
+                    if (ci == Int.MAX_VALUE) {
+                        Log.d(TAG, "LTE ci=MAX_VALUE, skip")
+                        return null
+                    }
+
+                    fun valid(value: Int): Int? =
+                        value.takeIf { it != Int.MAX_VALUE }
+
+                    fun validRange(value: Int, min: Int, max: Int): Int? =
+                        value.takeIf { it != Int.MAX_VALUE && it in min..max }
+
+                    val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        id.mccString
+                    } else {
+                        valid(id.mcc)?.toString()
+                    }
+
+                    val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        id.mncString
+                    } else {
+                        valid(id.mnc)?.toString()
+                    }
+
+                    val tac = valid(id.tac)
+                    val pci = valid(id.pci)
+
+                    val earfcn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        valid(id.earfcn)
+                    } else {
+                        null
+                    }
+
+                    val dbmAsRsrp = validRange(signal.dbm, -140, -43)
+
+                    val directRsrp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        validRange(signal.rsrp, -140, -43)
+                    } else {
+                        null
+                    }
+
+                    val rsrp = directRsrp ?: dbmAsRsrp
+
+                    // Missing means unavailable from modem/device; do not fabricate it.
+                    val rsrq = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        validRange(signal.rsrq, -34, 3)
+                    } else {
+                        null
+                    }
+
+                    val sinr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        validRange(signal.rssnr, -20, 30)
+                    } else {
+                        null
+                    }
+
+                    val cqi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        validRange(signal.cqi, 0, 15)
+                    } else {
+                        null
+                    }
+
+                    val timingAdvance = validRange(signal.timingAdvance, 0, 1282)
+
+                    val bandwidth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        valid(id.bandwidth)
+                    } else {
+                        null
+                    }
+
+                    val band = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        id.bands.firstOrNull()
+                    } else {
+                        null
+                    }
+
+                    Log.d(
+                        TAG,
+                        "LTE ci=$ci pci=$pci earfcn=$earfcn dbm=${signal.dbm} " +
+                            "directRsrp=$directRsrp effectiveRsrp=$rsrp " +
+                            "rsrq=$rsrq sinr=$sinr cqi=$cqi ta=$timingAdvance"
+                    )
+
+                    mapOf(
+                        "cellId" to ci,
+                        "tac" to tac,
+                        "mcc" to mcc,
+                        "mnc" to mnc,
+                        "signalStrength" to signal.dbm,
+                        "networkType" to "LTE",
+                        "pci" to pci,
+                        "earfcn" to earfcn,
+                        "rsrp" to rsrp,
+                        "rsrq" to rsrq,
+                        "sinr" to sinr,
+                        "cqi" to cqi,
+                        "timingAdvance" to timingAdvance,
+                        "asuLevel" to signal.asuLevel,
+                        "level" to signal.level,
+                        "bandwidth" to bandwidth,
+                        "band" to band,
+                        "registered" to cellInfo.isRegistered
+                    )
                 }
                 is CellInfoWcdma -> {
                     val id = cellInfo.cellIdentity
