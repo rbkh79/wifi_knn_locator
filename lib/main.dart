@@ -1068,44 +1068,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _exportOutdoorGpsBts() async {
-    final service = OutdoorGpsBtsService.instance;
-
-    // While recording, each finished row is already flushed to the current CSV.
-    // After Stop, do one final consistency flush before XLSX conversion.
-    String? preferredCsvPath;
-    if (service.isRecording) {
-      preferredCsvPath = service.currentSessionPath;
-    } else if (service.recordCount > 0) {
-      preferredCsvPath =
-          await service.flushCurrentSession() ?? service.latestSavedPath;
-    } else {
-      preferredCsvPath = service.latestSavedPath;
-    }
-
-    var ok = await OutdoorCsvService.shareGpsBtsXlsx(
-      csvPath: preferredCsvPath,
-    );
-
-    // CSV is the emergency fallback if XLSX generation ever fails.
-    if (!ok) {
-      ok = await OutdoorCsvService.shareGpsBtsCsv(
-        filePath: preferredCsvPath,
-      );
-    }
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok
-              ? 'Outdoor GPS+BTS export is ready. Choose Save/Files/Drive in the share sheet.'
-              : 'No saved Outdoor GPS+BTS records were found.',
-        ),
-        backgroundColor: ok ? Colors.green : Colors.orange,
-        duration: const Duration(seconds: 5),
-      ),
-    );
+    await OutdoorCsvService.exportAndOpenGpsBtsCsv();
   }
 
   Future<void> _exportOutdoorImu() async {
@@ -3007,7 +2970,7 @@ class _HomePageState extends State<HomePage> {
                   child: ElevatedButton.icon(
                     onPressed: _exportOutdoorGpsBts,
                     icon: const Icon(Icons.gps_fixed),
-                    label: const Text('Export Outdoor GPS+BTS (Excel XLSX)'),
+                    label: const Text('Open Outdoor GPS+BTS in Excel'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.cyan.shade700,
                       foregroundColor: Colors.white,
@@ -3021,7 +2984,7 @@ class _HomePageState extends State<HomePage> {
                   child: ElevatedButton.icon(
                     onPressed: _exportOutdoorImu,
                     icon: const Icon(Icons.sensors),
-                    label: const Text('Export Outdoor IMU+GPS Dataset'),
+                    label: const Text('Open Outdoor IMU+GPS in Excel'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber.shade700,
                       foregroundColor: Colors.white,

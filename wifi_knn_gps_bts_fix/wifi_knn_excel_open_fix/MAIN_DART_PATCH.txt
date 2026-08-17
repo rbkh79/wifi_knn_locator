@@ -1,0 +1,15 @@
+In lib/main.dart change only these two labels:
+
+OLD:
+label: const Text('Export Outdoor GPS+BTS Dataset'),
+NEW:
+label: const Text('Open Outdoor GPS+BTS in Excel'),
+
+OLD:
+label: const Text('Export Outdoor IMU+GPS Dataset'),
+NEW:
+label: const Text('Open Outdoor IMU+GPS in Excel'),
+
+Do NOT change the callbacks. They already call:
+_exportOutdoorGpsBts -> OutdoorCsvService.exportAndOpenGpsBtsCsv()
+_exportOutdoorImu -> OutdoorCsvService.exportAndOpenImuCsv()
