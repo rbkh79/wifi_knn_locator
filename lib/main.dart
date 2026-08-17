@@ -2064,38 +2064,55 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Chip(
-                              label: Text(
-                                'Signal: ${_latestGpsBtsRecord!.signalStrength ?? 'N/A'} dBm',
-                              ),
+                            // Network Type and Cell Info
+                            Text(
+                              '${_latestGpsBtsRecord!.networkType ?? 'Unknown'} | Cell: ${_latestGpsBtsRecord!.cellId ?? 'N/A'} | eNB: ${_latestGpsBtsRecord!.eNodeBId ?? 'N/A'} | Local: ${_latestGpsBtsRecord!.localCellId ?? 'N/A'}',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
                             ),
-                            Chip(
-                              label: Text(
-                                _latestGpsBtsRecord!.effectiveRsrp != null
-                                    ? 'RSRP: ${_latestGpsBtsRecord!.effectiveRsrp} dBm'
-                                    : 'RSRP: N/A (device)',
-                              ),
+                            const SizedBox(height: 4),
+                            // PCI, Band, EARFCN
+                            Text(
+                              'PCI: ${_latestGpsBtsRecord!.pci ?? 'N/A'} | Band: ${_latestGpsBtsRecord!.band ?? 'N/A'} | EARFCN: ${_latestGpsBtsRecord!.earfcn ?? 'N/A'}',
+                              style: TextStyle(fontSize: 11, color: Colors.blue.shade800),
                             ),
-                            Chip(
-                              label: Text(
-                                _latestGpsBtsRecord!.rsrq != null
-                                    ? 'RSRQ: ${_latestGpsBtsRecord!.rsrq} dB'
-                                    : 'RSRQ: N/A (device)',
-                              ),
+                            const SizedBox(height: 4),
+                            // Signal Metrics
+                            Text(
+                              'RSRP: ${_latestGpsBtsRecord!.effectiveRsrp ?? 'N/A'} | RSRQ: ${_latestGpsBtsRecord!.rsrq ?? 'N/A'} | SINR: ${_latestGpsBtsRecord!.sinr ?? 'N/A'}',
+                              style: TextStyle(fontSize: 11, color: Colors.blue.shade800),
                             ),
-                            Chip(
-                              label: Text(
-                                _latestGpsBtsRecord!.sinr != null
-                                    ? 'SINR: ${_latestGpsBtsRecord!.sinr} dB'
-                                    : 'SINR: N/A (device)',
-                              ),
+                            const SizedBox(height: 4),
+                            // Additional info
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: [
+                                Chip(
+                                  label: Text(
+                                    'Signal: ${_latestGpsBtsRecord!.signalStrength ?? 'N/A'} dBm',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                Chip(
+                                  label: Text(
+                                    'Timing advance: ${_latestGpsBtsRecord!.timingAdvance ?? '-'}',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                Chip(
+                                  label: Text(
+                                    'Neighbor cells: ${_latestGpsBtsRecord!.neighboringCells.length}',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ],
                             ),
-                            Chip(label: Text('Timing advance: ${_latestGpsBtsRecord!.timingAdvance ?? '-'}')),
-                            Chip(label: Text('Neighbor cells: ${_latestGpsBtsRecord!.neighboringCells.length}')),
                           ],
                         ),
                       ],
