@@ -933,71 +933,80 @@ class _HomePageState extends State<HomePage> {
   // ===== Outdoor Recording Methods =====
 
   Future<void> _toggleGpsBtsRecording() async {
-    debugPrint('[DEBUG] Start Recording clicked');
+    debugPrint('[DEBUG] GPS+BTS record toggle');
+
     if (_isRecordingGpsBts) {
-      debugPrint('[DEBUG] Stop Recording clicked');
-      // Stop recording
-      await OutdoorGpsBtsService.instance.stopRecording();
+      final savedPath = await OutdoorGpsBtsService.instance.stopRecording();
+
+      if (!mounted) return;
+
       setState(() {
         _isRecordingGpsBts = false;
-        _gpsBtsRecordingStatus = 'Recording stopped';
+        _gpsBtsRecordingStatus = savedPath != null
+            ? 'Saved $_gpsBtsRecordCount records'
+            : 'Recording stopped, but final save failed';
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('GPS+BTS recording stopped'),
-            backgroundColor: Colors.green,
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            savedPath != null
+                ? 'GPS+BTS saved successfully. You can export XLSX now.'
+                : 'GPS+BTS stopped, but final save failed. Try Export immediately.',
           ),
-        );
-      }
-    } else {
-      debugPrint('[DEBUG] Starting GPS+BTS recording service...');
-      // Start recording
-      final success = await OutdoorGpsBtsService.instance.startRecording(
-        onRecordCountChanged: (count) {
-          if (!mounted) return;
-          setState(() {
-            _gpsBtsRecordCount = count;
-          });
-        },
-        onLatestRecordChanged: (record) {
-          if (!mounted) return;
-          setState(() {
-            _latestGpsBtsRecord = record;
-          });
-        },
-        onStatusChanged: (status) {
-          setState(() {
-            _gpsBtsRecordingStatus = status;
-          });
-        },
+          backgroundColor: savedPath != null ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
       );
-      
-      if (success) {
-        debugPrint('[DEBUG] GPS+BTS recording service started successfully');
+
+      return;
+    }
+
+    final success = await OutdoorGpsBtsService.instance.startRecording(
+      onRecordCountChanged: (count) {
+        if (!mounted) return;
         setState(() {
-          _isRecordingGpsBts = true;
-          _gpsBtsRecordingStatus = 'Recording...';
+          _gpsBtsRecordCount = count;
         });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('GPS+BTS recording started'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        debugPrint('[DEBUG] GPS+BTS recording service failed to start');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to start GPS+BTS recording: $_gpsBtsRecordingStatus'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
+      },
+      onLatestRecordChanged: (record) {
+        if (!mounted) return;
+        setState(() {
+          _latestGpsBtsRecord = record;
+        });
+      },
+      onStatusChanged: (status) {
+        if (!mounted) return;
+        setState(() {
+          _gpsBtsRecordingStatus = status;
+        });
+      },
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() {
+        _isRecordingGpsBts = true;
+        _gpsBtsRecordingStatus =
+            'Recording... each completed sample is saved immediately';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GPS+BTS recording started; write-through save is active'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to start GPS+BTS recording: $_gpsBtsRecordingStatus',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -1059,7 +1068,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _exportOutdoorGpsBts() async {
-    await OutdoorCsvService.exportAndOpenGpsBtsCsv();
+    final service = OutdoorGpsBtsService.instance;
+
+    // While recording, each finished row is already flushed to the current CSV.
+    // After Stop, do one final consistency flush before XLSX conversion.
+    String? preferredCsvPath;
+    if (service.isRecording) {
+      preferredCsvPath = service.currentSessionPath;
+    } else if (service.recordCount > 0) {
+      preferredCsvPath =
+          await service.flushCurrentSession() ?? service.latestSavedPath;
+    } else {
+      preferredCsvPath = service.latestSavedPath;
+    }
+
+    var ok = await OutdoorCsvService.shareGpsBtsXlsx(
+      csvPath: preferredCsvPath,
+    );
+
+    // CSV is the emergency fallback if XLSX generation ever fails.
+    if (!ok) {
+      ok = await OutdoorCsvService.shareGpsBtsCsv(
+        filePath: preferredCsvPath,
+      );
+    }
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Outdoor GPS+BTS export is ready. Choose Save/Files/Drive in the share sheet.'
+              : 'No saved Outdoor GPS+BTS records were found.',
+        ),
+        backgroundColor: ok ? Colors.green : Colors.orange,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   Future<void> _exportOutdoorImu() async {
@@ -1992,16 +2038,32 @@ class _HomePageState extends State<HomePage> {
                           spacing: 6,
                           runSpacing: 6,
                           children: [
-                            Chip(label: Text('GPS ±${_latestGpsBtsRecord!.accuracy?.toStringAsFixed(0) ?? '-'} m')),
-                            Chip(label: Text('CellID: ${_latestGpsBtsRecord!.cellId ?? '-'}')),
-                            Chip(label: Text('eNodeB: ${_latestGpsBtsRecord!.eNodeBId ?? '-'}')),
-                            Chip(label: Text('Local cell: ${_latestGpsBtsRecord!.localCellId ?? '-'}')),
-                            Chip(label: Text('PCI: ${_latestGpsBtsRecord!.pci ?? '-'}')),
-                            Chip(label: Text('EARFCN: ${_latestGpsBtsRecord!.earfcn ?? '-'}')),
-                            Chip(label: Text('Signal: ${_latestGpsBtsRecord!.signalStrength ?? '-'} dBm')),
-                            Chip(label: Text('RSRP: ${_latestGpsBtsRecord!.rsrp ?? '-'} dBm')),
-                            Chip(label: Text('RSRQ: ${_latestGpsBtsRecord!.rsrq ?? '-'} dB')),
-                            Chip(label: Text('SINR: ${_latestGpsBtsRecord!.sinr ?? '-'} dB')),
+                            Chip(
+                              label: Text(
+                                'Signal: ${_latestGpsBtsRecord!.signalStrength ?? 'N/A'} dBm',
+                              ),
+                            ),
+                            Chip(
+                              label: Text(
+                                _latestGpsBtsRecord!.effectiveRsrp != null
+                                    ? 'RSRP: ${_latestGpsBtsRecord!.effectiveRsrp} dBm'
+                                    : 'RSRP: N/A (device)',
+                              ),
+                            ),
+                            Chip(
+                              label: Text(
+                                _latestGpsBtsRecord!.rsrq != null
+                                    ? 'RSRQ: ${_latestGpsBtsRecord!.rsrq} dB'
+                                    : 'RSRQ: N/A (device)',
+                              ),
+                            ),
+                            Chip(
+                              label: Text(
+                                _latestGpsBtsRecord!.sinr != null
+                                    ? 'SINR: ${_latestGpsBtsRecord!.sinr} dB'
+                                    : 'SINR: N/A (device)',
+                              ),
+                            ),
                             Chip(label: Text('Timing advance: ${_latestGpsBtsRecord!.timingAdvance ?? '-'}')),
                             Chip(label: Text('Neighbor cells: ${_latestGpsBtsRecord!.neighboringCells.length}')),
                           ],
@@ -2945,7 +3007,7 @@ class _HomePageState extends State<HomePage> {
                   child: ElevatedButton.icon(
                     onPressed: _exportOutdoorGpsBts,
                     icon: const Icon(Icons.gps_fixed),
-                    label: const Text('Export Outdoor GPS+BTS Dataset'),
+                    label: const Text('Export Outdoor GPS+BTS (Excel XLSX)'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.cyan.shade700,
                       foregroundColor: Colors.white,

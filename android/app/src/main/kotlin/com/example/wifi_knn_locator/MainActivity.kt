@@ -129,41 +129,31 @@ class MainActivity : FlutterActivity() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun fetchCellInfoForManager(telephonyManager: TelephonyManager, result: MethodChannel.Result) {
-        Log.d(TAG, "fetchCellInfoForManager: شروع اسکن")
+    private fun fetchCellInfoForManager(
+        telephonyManager: TelephonyManager,
+        result: MethodChannel.Result
+    ) {
+        Log.d(TAG, "fetchCellInfoForManager: requesting fresh cell info")
 
-        // ابتدا تلاش با allCellInfo (سریع‌تر، cache شده)
-        try {
-            val allCellInfo = telephonyManager.allCellInfo
-            if (allCellInfo != null && allCellInfo.isNotEmpty()) {
-                Log.d(TAG, "allCellInfo موفق: ${allCellInfo.size} دکل")
-                result.success(processCellInfoList(allCellInfo))
-                return
-            } else {
-                Log.w(TAG, "allCellInfo خالی یا null است، تلاش با requestCellInfoUpdate")
-            }
+        // Keep a cached copy only as a fallback. The old code returned this cache
+        // immediately, so fresh RSRP/RSRQ/RSSNR values were often never requested.
+        val cached = try {
+            telephonyManager.allCellInfo ?: emptyList()
         } catch (e: Exception) {
-            Log.e(TAG, "خطا در allCellInfo: ${e.message}")
+            Log.w(TAG, "Initial allCellInfo failed: ${e.message}")
+            emptyList()
         }
 
-        // Fallback به requestCellInfoUpdate برای Android 11+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Log.d(TAG, "تلاش با requestCellInfoUpdate (Android 11+)")
+        // requestCellInfoUpdate was added in API 29 (Android 10 / Q).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val handler = Handler(Looper.getMainLooper())
             var callbackCalled = false
 
             val timeoutRunnable = Runnable {
                 if (!callbackCalled) {
                     callbackCalled = true
-                    Log.w(TAG, "requestCellInfoUpdate timeout رسید")
-                    // آخرین تلاش: دوباره allCellInfo
-                    val fallback = try {
-                        telephonyManager.allCellInfo ?: emptyList()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Fallback allCellInfo خطا: ${e.message}")
-                        emptyList()
-                    }
-                    result.success(processCellInfoList(fallback))
+                    Log.w(TAG, "Fresh cell-info request timed out; using cached cells")
+                    result.success(processCellInfoList(cached))
                 }
             }
 
@@ -172,68 +162,42 @@ class MainActivity : FlutterActivity() {
                     mainExecutor,
                     object : TelephonyManager.CellInfoCallback() {
                         override fun onCellInfo(list: MutableList<CellInfo>) {
-                            if (!callbackCalled) {
-                                callbackCalled = true
-                                handler.removeCallbacks(timeoutRunnable)
-                                Log.d(TAG, "requestCellInfoUpdate موفق: ${list.size} دکل")
-                                result.success(processCellInfoList(list))
-                            }
+                            if (callbackCalled) return
+
+                            callbackCalled = true
+                            handler.removeCallbacks(timeoutRunnable)
+
+                            val selected = if (list.isNotEmpty()) list else cached
+                            Log.d(
+                                TAG,
+                                "Fresh cell info: ${list.size}; cached fallback: ${cached.size}"
+                            )
+                            result.success(processCellInfoList(selected))
                         }
 
                         override fun onError(errorCode: Int, detail: Throwable?) {
-                            if (!callbackCalled) {
-                                callbackCalled = true
-                                handler.removeCallbacks(timeoutRunnable)
-                                Log.e(TAG, "requestCellInfoUpdate خطا: code=$errorCode, detail=$detail")
-                                // Fallback به allCellInfo
-                                val fallback = try {
-                                    telephonyManager.allCellInfo ?: emptyList()
-                                } catch (e: Exception) {
-                                    emptyList()
-                                }
-                                result.success(processCellInfoList(fallback))
-                            }
+                            if (callbackCalled) return
+
+                            callbackCalled = true
+                            handler.removeCallbacks(timeoutRunnable)
+                            Log.w(
+                                TAG,
+                                "Fresh cell-info error=$errorCode detail=$detail; using cache"
+                            )
+                            result.success(processCellInfoList(cached))
                         }
                     }
                 )
-                // timeout 5 ثانیه
-                handler.postDelayed(timeoutRunnable, 5000)
+
+                handler.postDelayed(timeoutRunnable, 3500)
             } catch (e: Exception) {
-                Log.e(TAG, "Exception در requestCellInfoUpdate: ${e.message}")
-                val fallback = try {
-                    telephonyManager.allCellInfo ?: emptyList()
-                } catch (ex: Exception) {
-                    emptyList()
-                }
-
-                // اگر fallback خالی بود، تلاش برای cellLocation
-                if (fallback.isEmpty()) {
-                    try {
-                        val cellLoc = telephonyManager.cellLocation
-                        if (cellLoc != null) {
-                            val cellMap = cellLocationToMap(cellLoc)
-                            if (cellMap != null) {
-                                result.success(mapOf("serving_cell" to cellMap, "neighboring_cells" to emptyList<Any>()))
-                                return
-                            }
-                        }
-                    } catch (e2: Exception) {
-                        Log.w(TAG, "cellLocation fallback failed: ${e2.message}")
-                    }
-                }
-
-                result.success(processCellInfoList(fallback))
+                handler.removeCallbacks(timeoutRunnable)
+                Log.w(TAG, "requestCellInfoUpdate failed: ${e.message}")
+                result.success(processCellInfoList(cached))
             }
         } else {
-            // Android قدیمی: فقط allCellInfo
-            Log.d(TAG, "Android < 11: استفاده از allCellInfo")
-            val list = try {
-                telephonyManager.allCellInfo ?: emptyList()
-            } catch (e: Exception) {
-                Log.e(TAG, "خطا در allCellInfo: ${e.message}")
-                emptyList()
-            }
-            result.success(processCellInfoList(list))
+            Log.d(TAG, "Android < 10: using cached allCellInfo")
+            result.success(processCellInfoList(cached))
         }
     }
 
@@ -263,7 +227,7 @@ class MainActivity : FlutterActivity() {
                 val tmForSub = baseTelephonyManager.createForSubscriptionId(subInfo.subscriptionId)
                 Log.d(TAG, "اسکن سیم‌کارت: subId=${subInfo.subscriptionId}, simSlot=${subInfo.simSlotIndex}")
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     tmForSub.requestCellInfoUpdate(
                         mainExecutor,
                         object : TelephonyManager.CellInfoCallback() {
@@ -428,54 +392,93 @@ class MainActivity : FlutterActivity() {
                     val id = cellInfo.cellIdentity
                     val signal = cellInfo.cellSignalStrength
                     val ci = id.ci
-                    // فیلتر سخت‌گیرانه رو برداشتیم - فقط MAX_VALUE رو حذف می‌کنیم
+
                     if (ci == Int.MAX_VALUE) {
                         Log.d(TAG, "LTE ci=MAX_VALUE, skip")
                         return null
                     }
 
-                    fun valid(value: Int): Int? = value.takeIf { it != Int.MAX_VALUE }
+                    fun valid(value: Int): Int? =
+                        value.takeIf { it != Int.MAX_VALUE }
+
+                    fun validRange(value: Int, min: Int, max: Int): Int? =
+                        value.takeIf {
+                            it != Int.MAX_VALUE && it in min..max
+                        }
+
                     val mcc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         id.mccString
                     } else {
                         valid(id.mcc)?.toString()
                     }
+
                     val mnc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         id.mncString
                     } else {
                         valid(id.mnc)?.toString()
                     }
+
                     val tac = valid(id.tac)
                     val pci = valid(id.pci)
+
                     val earfcn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         valid(id.earfcn)
-                    } else null
+                    } else {
+                        null
+                    }
 
-                    val rsrp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        valid(signal.rsrp)
-                    } else null
+                    // For LTE Android documents getDbm() as the measured-cell RSRP.
+                    // Therefore it is a legitimate fallback when getRsrp() reports UNAVAILABLE.
+                    val dbmAsRsrp = validRange(signal.dbm, -140, -43)
+
+                    val directRsrp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        validRange(signal.rsrp, -140, -43)
+                    } else {
+                        null
+                    }
+
+                    val rsrp = directRsrp ?: dbmAsRsrp
+
+                    // Do not invent RSRQ/SINR. Keep null if the modem/firmware does not expose it.
                     val rsrq = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         valid(signal.rsrq)
-                    } else null
+                    } else {
+                        null
+                    }
+
                     val sinr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        valid(signal.rssnr)
-                    } else null
+                        validRange(signal.rssnr, -20, 30)
+                    } else {
+                        null
+                    }
+
                     val cqi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        valid(signal.cqi)
-                    } else null
-                    val timingAdvance = valid(signal.timingAdvance)
+                        validRange(signal.cqi, 0, 15)
+                    } else {
+                        null
+                    }
+
+                    val timingAdvance = validRange(signal.timingAdvance, 0, 1282)
+
                     val bandwidth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         valid(id.bandwidth)
-                    } else null
+                    } else {
+                        null
+                    }
+
                     val band = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         id.bands.firstOrNull()
-                    } else null
+                    } else {
+                        null
+                    }
 
                     Log.d(
                         TAG,
                         "LTE ci=$ci pci=$pci earfcn=$earfcn dbm=${signal.dbm} " +
-                            "rsrp=$rsrp rsrq=$rsrq sinr=$sinr ta=$timingAdvance"
+                            "directRsrp=$directRsrp effectiveRsrp=$rsrp " +
+                            "rsrq=$rsrq sinr=$sinr cqi=$cqi ta=$timingAdvance"
                     )
+
                     mapOf(
                         "cellId" to ci,
                         "tac" to tac,
